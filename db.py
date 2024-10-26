@@ -1,16 +1,13 @@
 #db.py
 
-import mysql.connector
+from pymongo import MongoClient
 from config import Config
+import certifi  # New import for SSL certificate handling
 
-# Connect to MariaDB
+# Connect to MongoDB
 def get_db_connection():
-    connection = mysql.connector.connect(
-        host=Config.DATABASE_HOST,
-        user=Config.DATABASE_USER,
-        password=Config.DATABASE_PASSWORD,
-        database=Config.DATABASE_NAME,
-        charset='utf8mb4',
-        collation='utf8mb4_general_ci'
-    )
-    return connection
+    # Use certifi to specify a trusted CA certificate
+    client = MongoClient(Config.MONGO_URI, tlsCAFile=certifi.where())
+    db = client[Config.DATABASE_NAME]  # Select the database
+    return db
+
