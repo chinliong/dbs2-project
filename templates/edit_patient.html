@@ -14,47 +14,47 @@
 <form method="POST">
   <div class="form-group">
     <label for="patient_name">Name:</label>
-    <input type="text" class="form-control" id="patient_name" name="patient_name" value="{{ patient.PatientName or '' }}" required>
+    <input type="text" class="form-control" id="patient_name" name="patient_name" value="{{ patient.get('PatientName', '') }}" required>
   </div>
 
   <div class="form-group">
     <label for="nric">NRIC:</label>
-    {% if errors.nric %}
-      <div class="text-danger error-message">{{ errors.nric }}</div>
+    {% if errors.get('nric') %}
+      <div class="text-danger error-message">{{ errors['nric'] }}</div>
     {% endif %}
-    <input type="text" class="form-control" id="nric" name="nric" value="{{ patient.NRIC or '' }}" required>
+    <input type="text" class="form-control" id="nric" name="nric" value="{{ patient.get('NRIC', '') }}" required>
   </div>
 
   <div class="form-group">
     <label for="email">Email:</label>
-    {% if errors.email %}
-      <div class="text-danger error-message">{{ errors.email }}</div>
+    {% if errors.get('email') %}
+      <div class="text-danger error-message">{{ errors['email'] }}</div>
     {% endif %}
-    <input type="email" class="form-control" id="email" name="email" value="{{ user.Email or '' }}" required>
+    <input type="email" class="form-control" id="email" name="email" value="{{ user.get('Email', '') }}" required>
   </div>
 
   <div class="form-group">
     <label for="username">Username:</label>
-    {% if errors.username %}
-      <div class="text-danger error-message">{{ errors.username }}</div>
+    {% if errors.get('username') %}
+      <div class="text-danger error-message">{{ errors['username'] }}</div>
     {% endif %}
-    <input type="text" class="form-control" id="username" name="username" value="{{ user.Username or '' }}" required>
+    <input type="text" class="form-control" id="username" name="username" value="{{ user.get('Username', '') }}" required>
   </div>
 
   <div class="form-group">
     <label for="contact_number">Contact Number:</label>
-    {% if errors.contact_number %}
-      <div class="text-danger error-message">{{ errors.contact_number }}</div>
+    {% if errors.get('contact_number') %}
+      <div class="text-danger error-message">{{ errors['contact_number'] }}</div>
     {% endif %}
-    <input type="text" class="form-control" id="contact_number" name="contact_number" value="{{ user.ContactNumber or '' }}" required>
+    <input type="text" class="form-control" id="contact_number" name="contact_number" value="{{ user.get('ContactNumber', '') }}" required>
   </div>
 
   <div class="form-group">
     <label for="address">Address:</label>
-    {% if errors.address %}
-      <div class="text-danger error-message">{{ errors.address }}</div>
+    {% if errors.get('address') %}
+      <div class="text-danger error-message">{{ errors['address'] }}</div>
     {% endif %}
-    <input type="text" class="form-control" id="address" name="address" value="{{ user.Address or '' }}" required>
+    <input type="text" class="form-control" id="address" name="address" value="{{ user.get('Address', '') }}" required>
   </div>
 
   <div class="form-group">
@@ -65,27 +65,27 @@
   <div class="form-group">
     <label for="patient_gender">Gender:</label>
     <select class="form-control" id="patient_gender" name="patient_gender" required>
-        <option value="M" {% if patient.PatientGender == 'M' %}selected{% endif %}>Male</option>
-        <option value="F" {% if patient.PatientGender == 'F' %}selected{% endif %}>Female</option>
+        <option value="M" {% if patient.get('PatientGender') == 'M' %}selected{% endif %}>Male</option>
+        <option value="F" {% if patient.get('PatientGender') == 'F' %}selected{% endif %}>Female</option>
     </select>
   </div>
 
   <div class="form-group">
     <label for="patient_height">Height (m):</label>
-    <input type="number" step="0.01" class="form-control" id="patient_height" name="patient_height" value="{{ patient.PatientHeight or '' }}">
+    <input type="number" step="0.01" class="form-control" id="patient_height" name="patient_height" value="{{ patient.get('PatientHeight', '') }}">
   </div>
 
   <div class="form-group">
     <label for="patient_weight">Weight (kg):</label>
-    <input type="number" step="0.1" class="form-control" id="patient_weight" name="patient_weight" value="{{ patient.PatientWeight or '' }}">
+    <input type="number" step="0.1" class="form-control" id="patient_weight" name="patient_weight" value="{{ patient.get('PatientWeight', '') }}">
   </div>
 
   <div class="form-group">
     <label for="patient_dob">Date of Birth:</label>
-    <input type="date" class="form-control" id="patient_dob" name="patient_dob" value="{{ patient.PatientDOB or '' }}" required>
+    <input type="date" class="form-control" id="patient_dob" name="patient_dob" value="{{ patient.get('PatientDOB', '') }}" required>
   </div>
 
-  <h3 class="mb-4"  style="margin-top: 30px;">Past Diagnoses</h3>
+  <h3 class="mb-4" style="margin-top: 30px;">Past Diagnoses</h3>
 
   <div id="diagnoses-section">
     {% if diagnoses %}
@@ -97,21 +97,21 @@
                     <div class="row mb-3">
                         <div class="col-md-4">
                             <label for="diagnosis_{{ loop.index }}" class="font-weight-bold">Diagnosis:</label>
-                            <input type="text" class="form-control" id="diagnosis_{{ loop.index }}" name="diagnosis_text" value="{{ diagnosis.diagnosis or '' }}" required>
+                            <input type="text" class="form-control" id="diagnosis_{{ loop.index }}" name="diagnosis_text" value="{{ diagnosis.get('diagnosis', '') }}" required>
                         </div>
                         <div class="col-md-8">
                             <label for="notes_{{ loop.index }}" class="font-weight-bold">Notes:</label>
-                            <textarea class="form-control" id="notes_{{ loop.index }}" name="diagnosis_notes" rows="2" placeholder="Additional notes...">{{ diagnosis.notes or '' }}</textarea>
+                            <textarea class="form-control" id="notes_{{ loop.index }}" name="diagnosis_notes" rows="2" placeholder="Additional notes...">{{ diagnosis.get('notes', '') }}</textarea>
                         </div>
                     </div>
 
                     <div class="row mb-3">
                         <div class="col-md-4">
                             <label for="date_{{ loop.index }}" class="font-weight-bold">Diagnosis Date:</label>
-                            <input type="date" class="form-control" id="date_{{ loop.index }}" name="diagnosis_date" value="{{ diagnosis.date }}" required>
+                            <input type="date" class="form-control" id="date_{{ loop.index }}" name="diagnosis_date" value="{{ diagnosis.get('date', '') }}" required>
                         </div>
-                        <input type="hidden" name="diagnosis_id" value="{{ diagnosis.HistoryID }}"> <!-- Hidden input for HistoryID -->
-                        <input type="hidden" name="appt_id" value="{{ diagnosis.ApptID }}">
+                        <input type="hidden" name="diagnosis_id" value="{{ diagnosis.get('HistoryID', '') }}"> <!-- Hidden input for HistoryID -->
+                        <input type="hidden" name="appt_id" value="{{ diagnosis.get('ApptID', '') }}">
                     </div>
                 </div>
             </div>

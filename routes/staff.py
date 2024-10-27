@@ -704,44 +704,109 @@ from utils import is_valid_nric, is_valid_sg_address, is_valid_sg_phone
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
+import logging
 
-# Staff Dashboard route with filter functionality
+# Staff Dashboard route
 @staff_bp.route('/staff_dashboard', methods=['GET'])
 def staff_dashboard():
     if 'is_staff' in session and session['is_staff'] == 1:
         db = get_db_connection()
 
-        # Collect filters from request arguments
-        filters = {}
-        if request.args.get('user_id'):
-            filters['_id'] = ObjectId(request.args['user_id'])
-        if request.args.get('username'):
-            filters['Username'] = {'$regex': request.args['username'], '$options': 'i'}
-        if request.args.get('email'):
-            filters['Email'] = {'$regex': request.args['email'], '$options': 'i'}
-        if request.args.get('address'):
-            filters['Address'] = {'$regex': request.args['address'], '$options': 'i'}
-        if request.args.get('contact_number'):
-            filters['ContactNumber'] = {'$regex': request.args['contact_number'], '$options': 'i'}
-        if request.args.get('name'):
-            filters['PatientName'] = {'$regex': request.args['name'], '$options': 'i'}
-        if request.args.get('nric'):
-            filters['NRIC'] = {'$regex': request.args['nric'], '$options': 'i'}
-        if request.args.get('gender'):
-            filters['PatientGender'] = request.args['gender']
-        if request.args.get('dob'):
+        # Get values from the request (GET parameters)
+        user_id = request.args.get('user_id', '')
+        username = request.args.get('username', '')
+        email = request.args.get('email', '')
+        address = request.args.get('address', '')
+        contact_number = request.args.get('contact_number', '')
+        name = request.args.get('name', '')
+        nric = request.args.get('nric', '')
+        gender = request.args.get('gender', '')
+        height = request.args.get('height', '')
+        weight = request.args.get('weight', '')
+        dob = request.args.get('dob', '')
+        diagnosis = request.args.get('diagnosis', '')
+        diagnosis_date = request.args.get('diagnosis_date', '')
+
+        # Build the query for filtering patients
+        # Ensure we query `Users` first, then link to `Patients`
+        query = {"IsStaff": 0}
+
+        # Add filters dynamically if they exist (for the `Users` collection)
+        if user_id:
             try:
-                filters['PatientDOB'] = datetime.strptime(request.args['dob'], '%Y-%m-%d')
-            except ValueError:
-                flash("Invalid date format for DOB", "danger")
-        # Query for patients with the applied filters
-        patients = list(db['Users'].find(filters))
+                query["_id"] = ObjectId(user_id)
+            except Exception:
+                flash("Invalid User ID format.")
+                return redirect(url_for('staff.staff_dashboard'))
+        if username:
+            query["Username"] = {"$regex": username, "$options": "i"}
+        if email:
+            query["Email"] = {"$regex": email, "$options": "i"}
+        if address:
+            query["Address"] = {"$regex": address, "$options": "i"}
+        if contact_number:
+            query["ContactNumber"] = {"$regex": contact_number, "$options": "i"}
+
+        # Fetch users who are not staff and match the criteria
+        user_matches = list(db.Users.find(query))
+
+        # Fetch linked patient information based on matched users
+        patients = []
+
+        for user in user_matches:
+            # Find corresponding patient record based on UserID
+            patient_query = {"UserID": user["_id"]}
+
+            # Add additional patient-specific filters if provided
+            if name:
+                patient_query["PatientName"] = {"$regex": name, "$options": "i"}
+            if nric:
+                patient_query["NRIC"] = {"$regex": nric, "$options": "i"}
+            if gender:
+                patient_query["PatientGender"] = gender
+            if height:
+                try:
+                    patient_query["PatientHeight"] = float(height)
+                except ValueError:
+                    flash("Height must be a number.")
+                    return redirect(url_for('staff.staff_dashboard'))
+            if weight:
+                try:
+                    patient_query["PatientWeight"] = float(weight)
+                except ValueError:
+                    flash("Weight must be a number.")
+                    return redirect(url_for('staff.staff_dashboard'))
+            if dob:
+                try:
+                    patient_query["PatientDOB"] = datetime.strptime(dob, '%Y-%m-%d')
+                except ValueError:
+                    logging.warning(f"Invalid date format for DOB: {dob}")
+                    continue
+
+            # Fetch patient record based on the refined query
+            patient = db.Patients.find_one(patient_query)
+            if patient:
+                # Attach user information to the patient details for better rendering
+                patient['user'] = user
+                patients.append(patient)
+                
+        # Format PatientDOB and DiagnosisDate before passing to the template
+        for patient in patients:
+            # Check if PatientDOB is a datetime object before formatting
+            if 'PatientDOB' in patient:
+                if isinstance(patient['PatientDOB'], datetime):
+                    patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
+            
+            # Check if DiagnosisDate is a datetime object before formatting
+            if 'DiagnosisDate' in patient:
+                if isinstance(patient['DiagnosisDate'], datetime):
+                    patient['DiagnosisDate'] = patient['DiagnosisDate'].strftime('%Y-%m-%d')
 
         return render_template('staff_dashboard.html', patients=patients)
     else:
         flash('Please login or create a new account to access our services.')
         return redirect(url_for('auth.login'))
-    
+
 # Edit patient records route
 @staff_bp.route('/edit_patient/<string:patient_id>', methods=['GET', 'POST'])
 def edit_patient(patient_id):
@@ -752,36 +817,123 @@ def edit_patient(patient_id):
     db = get_db_connection()
     errors = {}
 
+    # Fetch patient details
+    patient = db.Patients.find_one({"_id": ObjectId(patient_id)})
+    if not patient:
+        flash('Patient not found.', 'danger')
+        return redirect(url_for('staff.staff_dashboard'))
+
+    # Fetch the corresponding user using UserID
+    user = db.Users.find_one({"_id": ObjectId(patient['UserID'])})
+    if not user:
+        flash('User not found for the given patient.', 'danger')
+        return redirect(url_for('staff.staff_dashboard'))
+
     if request.method == 'POST':
         # Retrieve form data
-        patient_data = {
-            "PatientName": request.form['patient_name'],
-            "NRIC": request.form['nric'],
-            "PatientGender": request.form['patient_gender'],
-            "PatientHeight": request.form['patient_height'],
-            "PatientWeight": request.form['patient_weight'],
-            "PatientDOB": request.form['patient_dob'],
-            "Email": request.form['email'],
-            "Username": request.form['username'],
-            "ContactNumber": request.form['contact_number'],
-            "Address": request.form['address'],
-            "Password": generate_password_hash(request.form.get('password'), method='pbkdf2:sha256') if request.form.get('password') else None
-        }
+        patient_name = request.form['patient_name']
+        nric = request.form['nric']
+        patient_gender = request.form['patient_gender']
+        patient_height = request.form['patient_height']
+        patient_weight = request.form['patient_weight']
+        patient_dob = request.form['patient_dob']
+        email = request.form['email']
+        username = request.form['username']
+        contact_number = request.form['contact_number']
+        address = request.form['address']
+        password = request.form.get('password')
 
-        # Update document in MongoDB
-        db['Users'].update_one({'_id': ObjectId(patient_id)}, {"$set": patient_data})
-        flash('Patient details and diagnoses updated successfully!', 'success')
-        return redirect(url_for('staff.staff_dashboard'))
+        # Handle past diagnosis update or add
+        diagnosis_id = request.form.getlist('diagnosis_id')
+        diagnosis_text = request.form.getlist('diagnosis_text')
+        diagnosis_date = request.form.getlist('diagnosis_date')
+        diagnosis_notes = request.form.getlist('diagnosis_notes')
+        appt_id = request.form.getlist('appt_id')
 
-    # Fetch patient details
-    patient = db['Users'].find_one({'_id': ObjectId(patient_id)})
-    if not patient:
-        flash('Patient not found', 'danger')
-        return redirect(url_for('staff.staff_dashboard'))
+        # Validations
+        if not is_valid_nric(nric):
+            errors['nric'] = 'Invalid NRIC format. It must start with S, T, F, G, or M, followed by 7 digits and one letter.'
 
-    return render_template('edit_patient.html', patient=patient, errors=errors)
+        if not is_valid_sg_phone(contact_number):
+            errors['contact_number'] = 'Invalid phone number format. It must start with 6, 8, or 9 and be 8 digits long.'
 
-# Delete patient records route
+        if not is_valid_sg_address(address):
+            errors['address'] = 'Invalid address. Please include a valid 6-digit postal code.'
+
+        # Check for existing user with the same email, contact number, or username
+        existing_user = db.Users.find_one({
+            "$or": [
+                {"Email": email},
+                {"ContactNumber": contact_number},
+                {"Username": username}
+            ],
+            "_id": {"$ne": ObjectId(patient['UserID'])}  # Use patient's UserID to properly exclude
+        })
+
+        existing_nric = db.Patients.find_one({
+            "NRIC": nric,
+            "_id": {"$ne": ObjectId(patient_id)}
+        })
+
+        if existing_user:
+            if existing_user['Email'] == email:
+                errors['email'] = 'Email is already in use.'
+            if existing_user['ContactNumber'] == contact_number:
+                errors['contact_number'] = 'Contact number is already in use.'
+            if existing_user['Username'] == username:
+                errors['username'] = 'Username is already in use.'
+
+        if existing_nric:
+            errors['nric'] = 'NRIC is already in use.'
+
+        # If no errors, update the patient details in the DB
+        if not errors:
+            patient_update = {
+                "PatientName": patient_name,
+                "NRIC": nric,
+                "PatientGender": patient_gender,
+                "PatientHeight": float(patient_height) if patient_height.strip() else None,
+                "PatientWeight": float(patient_weight) if patient_weight.strip() else None,
+                "PatientDOB": datetime.strptime(patient_dob, '%Y-%m-%d')
+            }
+            db.Patients.update_one({"_id": ObjectId(patient_id)}, {"$set": patient_update})
+
+            user_update = {
+                "Username": username,
+                "Email": email,
+                "ContactNumber": contact_number,
+                "Address": address
+            }
+            if password and password.strip():
+                user_update["Password"] = generate_password_hash(password, method='pbkdf2:sha256')
+            db.Users.update_one({"_id": ObjectId(patient['UserID'])}, {"$set": user_update})
+
+            # Handle diagnosis updates and inserts
+            for idx, diag_id in enumerate(diagnosis_id):
+                diagnosis_data = {
+                    "diagnosis": diagnosis_text[idx],
+                    "date": datetime.strptime(diagnosis_date[idx], '%Y-%m-%d'),
+                    "notes": diagnosis_notes[idx],
+                    "ApptID": appt_id[idx]
+                }
+                if diag_id:
+                    db.PatientHistory.update_one({"_id": ObjectId(diag_id), "PatientID": ObjectId(patient_id)}, {"$set": diagnosis_data})
+
+            flash('Patient details and diagnoses updated successfully!', 'success')
+            return redirect(url_for('staff.staff_dashboard'))
+
+    # Fetch patient diagnoses
+    patient_diagnoses = list(db.PatientHistory.find({"PatientID": ObjectId(patient_id)}).sort("date", -1))
+
+    # Format diagnosis date
+    for diag in patient_diagnoses:
+        if diag.get('date'):
+            diag['date'] = diag['date'].strftime('%Y-%m-%d')
+
+    return render_template('edit_patient.html', patient=patient, user=user, diagnoses=patient_diagnoses, errors=errors)
+
+
+# Delete patient records route. Only staff should be able to delete patient records due to how a clinic works
 @staff_bp.route('/delete_patient/<string:patient_id>', methods=['POST'])
 def delete_patient(patient_id):
     if 'is_staff' not in session or session['is_staff'] != 1:
@@ -790,34 +942,41 @@ def delete_patient(patient_id):
 
     db = get_db_connection()
 
-    # Remove patient and related records
-    db['Prescriptions'].delete_many({'PatientID': ObjectId(patient_id)})
-    db['PatientHistory'].delete_many({'PatientID': ObjectId(patient_id)})
-    db['Appointments'].delete_many({'PatientID': ObjectId(patient_id)})
-    db['Users'].delete_one({'_id': ObjectId(patient_id)})
+    try:
+        # Delete from all collections associated with patients
+        db.prescriptions.delete_many({"patient_id": ObjectId(patient_id)})
+        db.patient_history.delete_many({"patient_id": ObjectId(patient_id)})
+        db.appointments.delete_many({"patient_id": ObjectId(patient_id)})
+        db.patients.delete_one({"_id": ObjectId(patient_id)})
+        db.users.delete_one({"_id": ObjectId(patient_id)})
 
-    flash('Patient and associated appointments deleted successfully!', 'success')
+        flash('Patient and associated appointments deleted successfully!', 'success')
+    except Exception as err:
+        flash(f'An error occurred: {err}', 'danger')
+
     return redirect(url_for('staff.staff_dashboard'))
 
 # Manage appointment route
+# It is for doctors to see what appointments there are for the next 7 days.
 @staff_bp.route('/manage_appointment')
 def manage_appointment():
     if 'is_staff' in session and session['is_staff'] == 1:
         db = get_db_connection()
 
-        # Date range for appointments within the next 7 days
+        # Calculate the date range for the next 7 days
         start_date = datetime.now()
         end_date = start_date + timedelta(days=7)
 
-        # Fetch appointments within date range and status "Pending"
-        appointments = list(db['Appointments'].find({
-            "ApptDate": {"$gte": start_date, "$lte": end_date},
-            "ApptStatus": "Pending"
-        }).sort([("ApptDate", 1), ("ApptTime", 1)]))
+        # Fetch appointments in the next 7 days sorted by earliest first
+        appointments = list(db.appointments.find({
+            "appt_date": {"$gte": start_date, "$lte": end_date},
+            "appt_status": "Pending"
+        }).sort([("appt_date", 1), ("appt_time", 1)]))
 
         return render_template('manage_appointment.html', appointments=appointments)
     else:
         flash('Please login or create a new account to access our services.')
+        return redirect(url_for('auth.login'))
 
 # View patient details
 @staff_bp.route('/view_patient/<string:patient_id>/<string:appt_id>', methods=['GET', 'POST'])
@@ -825,38 +984,87 @@ def view_patient(patient_id, appt_id):
     db = get_db_connection()
 
     if request.method == 'POST':
-        # Save prescription and/or history
-        medication = request.form.get('medication')
-        duration = request.form.get('duration')
-        notes = request.form.get('notes')
+        # Check if we are saving a prescription
+        if 'medication' in request.form:
+            medication_name = request.form['medication']
+            # Extract only the medication name from the display text
+            med_name_only = medication_name.split(' (')[0]
+            duration = request.form['duration']
+            notes = request.form['notes']
 
-        # Fetch medication data
-        med_data = db['Medications'].find_one({"name": medication})
-        if med_data:
-            dosage_needed = int(duration)
-            if med_data['quantity'] >= dosage_needed:
-                # Insert prescription and update medication
-                db['Prescriptions'].insert_one({
-                    "PatientID": ObjectId(patient_id),
-                    "ApptID": ObjectId(appt_id),
-                    "MedID": med_data["_id"],
-                    "Dosage": dosage_needed,
-                    "Date": datetime.now(),
-                    "Notes": notes
-                })
-                db['Medications'].update_one({"_id": med_data["_id"]}, {"$inc": {"quantity": -dosage_needed}})
-                flash('Prescription added successfully!', 'success')
+            # Fetch the medication based on med name
+            med = db.medications.find_one({"name": med_name_only})
+
+            if med:
+                med_id = med['_id']
+                current_quantity = med['quantity']
+                requested_dosage = int(duration)
+
+                # Check if there is enough medication
+                if current_quantity >= requested_dosage:
+                    # Insert into Prescriptions collection
+                    db.prescriptions.insert_one({
+                        "patient_id": ObjectId(patient_id),
+                        "appt_id": ObjectId(appt_id),
+                        "med_id": med_id,
+                        "dosage": requested_dosage,
+                        "date": datetime.now(),
+                        "notes": notes
+                    })
+                    # Deduct the quantity
+                    db.medications.update_one({"_id": med_id}, {"$inc": {"quantity": -requested_dosage}})
+
+                    # Insert an entry into Inventory logs
+                    db.inventory_logs.insert_one({
+                        "med_id": med_id,
+                        "change_type": 'subtract',
+                        "quantity_changed": requested_dosage,
+                        "date": datetime.now()
+                    })
+
+                    flash('Prescription added successfully!', 'success')
+                else:
+                    flash('Not enough medication in stock!', 'danger')
             else:
-                flash('Not enough medication in stock!', 'danger')
+                flash('Medication not found!', 'danger')
         else:
-            flash('Medication not found!', 'danger')
+            # Save the diagnosis and notes
+            diagnosis = request.form['diagnosis']
+            notes = request.form['notes']
+            date = datetime.now()
 
-    # Fetch patient information, history, and prescriptions
-    patient_info = db['Users'].find_one({'_id': ObjectId(patient_id)})
-    patient_history = list(db['PatientHistory'].find({'PatientID': ObjectId(patient_id)}))
-    prescriptions = list(db['Prescriptions'].find({'PatientID': ObjectId(patient_id)}))
+            db.patient_history.insert_one({
+                "patient_id": ObjectId(patient_id),
+                "appt_id": ObjectId(appt_id),
+                "diagnosis": diagnosis,
+                "notes": notes,
+                "date": date
+            })
 
-    return render_template('view_patient.html', patient=patient_info, history=patient_history, prescriptions=prescriptions, appt_id=appt_id)
+            flash('Patient history updated successfully!', 'success')
+
+    # Fetch past patient information, past diagnosis, and prescriptions to display
+    patient_info = db.patients.find_one({"_id": ObjectId(patient_id)})
+    patient_history = list(db.patient_history.find({"patient_id": ObjectId(patient_id)}))
+    past_prescriptions = list(db.prescriptions.aggregate([
+        {"$match": {"patient_id": ObjectId(patient_id)}},
+        {"$lookup": {
+            "from": "medications",
+            "localField": "med_id",
+            "foreignField": "_id",
+            "as": "medication_details"
+        }},
+        {"$unwind": "$medication_details"},
+        {"$project": {
+            "prescription_id": 1,
+            "medication_name": "$medication_details.name",
+            "dosage": 1,
+            "date": 1,
+            "notes": 1
+        }}
+    ]))
+
+    return render_template('view_patient.html', patient=patient_info, history=patient_history, prescriptions=past_prescriptions, appt_id=appt_id)
 
 # Fetch medications route
 @staff_bp.route('/fetch_medications')
@@ -864,121 +1072,111 @@ def fetch_medications():
     query = request.args.get('query', '')
     db = get_db_connection()
 
-    # Search medications by name
-    medications = list(db['Medications'].find({"name": {"$regex": query, "$options": "i"}}))
-    
+    # Fetch medications that match the user's input
+    medications = list(db.medications.find({"name": {"$regex": query, "$options": "i"}}))
+
+    # Prepare response data based on columns in med table
     medication_list = [
-        {"name": med['name'], "form": med['form'], "dosage": med['dosage']}
+        {
+            'name': med['name'],
+            'form': med['form'],
+            'dosage': med['dosage']
+        }
         for med in medications
     ]
-    
+
     return jsonify(medication_list)
 
-# Advanced search route for staff
+# Advanced search routes
+# Search feature for staff only using different parameters to find patients
 @staff_bp.route('/advanced_search', methods=['POST'])
 def advanced_search():
     if 'is_staff' not in session or session['is_staff'] != 1:
         return jsonify({'error': 'Unauthorized'}), 403
 
+    # Get search parameters from the form
+    filters = {
+        'username': request.form.get('username'),
+        'email': request.form.get('email'),
+        'address': request.form.get('address'),
+        'contact_number': request.form.get('contact_number'),
+        'patient_name': request.form.get('patient_name'),
+        'nric': request.form.get('nric'),
+        'patient_gender': request.form.get('gender'),
+        'patient_height': request.form.get('height'),
+        'patient_weight': request.form.get('weight'),
+        'patient_dob': request.form.get('dob'),
+        'diagnosis': request.form.get('diagnosis'),
+        'diagnosis_date': request.form.get('diagnosis_date')
+    }
+
     db = get_db_connection()
-    filters = {}
+    query = {"is_staff": False}
 
-    # Extract search filters from form data
-    if request.form.get('username'):
-        filters['Username'] = {'$regex': request.form['username'], '$options': 'i'}
-    if request.form.get('email'):
-        filters['Email'] = {'$regex': request.form['email'], '$options': 'i'}
-    if request.form.get('address'):
-        filters['Address'] = {'$regex': request.form['address'], '$options': 'i'}
-    if request.form.get('contact_number'):
-        filters['ContactNumber'] = {'$regex': request.form['contact_number'], '$options': 'i'}
-    if request.form.get('nric'):
-        filters['NRIC'] = {'$regex': request.form['nric'], '$options': 'i'}
-    if request.form.get('dob'):
-        try:
-            filters['PatientDOB'] = datetime.strptime(request.form['dob'], '%Y-%m-%d')
-        except ValueError:
-            flash("Invalid date format for DOB", "danger")
+    # Add filters dynamically if they exist
+    for field, value in filters.items():
+        if value:
+            if field in ['username', 'email', 'address', 'contact_number', 'patient_name', 'nric', 'diagnosis']:
+                query[field] = {"$regex": value, "$options": "i"}
+            elif field == 'patient_gender':
+                query['patient_gender'] = value
+            elif field in ['patient_height', 'patient_weight']:
+                try:
+                    query[field] = float(value)
+                except ValueError:
+                    continue
+            elif field == 'patient_dob':
+                query['patient_dob'] = datetime.strptime(value, '%Y-%m-%d')
+            elif field == 'diagnosis_date':
+                try:
+                    query['diagnosis.diagnosis_date'] = datetime.strptime(value, '%Y-%m-%d')
+                except ValueError:
+                    logging.warning(f"Invalid date format for diagnosis_date: {value}")
+                    continue
 
-    # Execute search query
-    results = list(db['Users'].find(filters))
+    # Execute the query
+    results = list(db.patients.find(query))
+
+    # Format the results for DOB and diagnosis_date
+    for result in results:
+        if result.get('patient_dob'):
+            result['patient_dob'] = result['patient_dob'].strftime('%Y-%m-%d')
+        if result.get('diagnosis', {}).get('diagnosis_date'):
+            result['diagnosis']['diagnosis_date'] = result['diagnosis']['diagnosis_date'].strftime('%Y-%m-%d')
 
     return jsonify(results)
 
-# Edit patient records route with validation
-@staff_bp.route('/edit_patient/<string:patient_id>', methods=['GET', 'POST'])
-def edit_patient(patient_id):
-    if 'is_staff' not in session or session['is_staff'] != 1:
-        flash('You do not have access to this page.')
-        return redirect(url_for('auth.login'))
-
+# Staff only feature: edit appointments for patients
+@staff_bp.route('/edit_appointment/<string:appt_id>', methods=['GET', 'POST'])
+def edit_appointment(appt_id):
     db = get_db_connection()
-    errors = {}
 
     if request.method == 'POST':
-        # Retrieve and validate form data
-        patient_name = request.form.get('patient_name')
-        nric = request.form.get('nric')
-        patient_gender = request.form.get('patient_gender')
-        patient_height = request.form.get('patient_height')
-        patient_weight = request.form.get('patient_weight')
-        patient_dob = request.form.get('patient_dob')
-        email = request.form.get('email')
-        username = request.form.get('username')
-        contact_number = request.form.get('contact_number')
-        address = request.form.get('address')
-        password = request.form.get('password')
+        date = request.form['date']
+        time = request.form['time']
+        status = request.form['status']
+        reason = request.form['reason']
 
-        # Validation for fields
-        if not patient_name:
-            errors['patient_name'] = 'Patient name is required.'
-        if not is_valid_nric(nric):
-            errors['nric'] = 'Invalid NRIC format.'
-        if contact_number and not is_valid_sg_phone(contact_number):
-            errors['contact_number'] = 'Invalid Singapore phone number format.'
-        if address and not is_valid_sg_address(address):
-            errors['address'] = 'Invalid Singapore address format.'
+        db.appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {
+            "appt_date": datetime.strptime(date, '%Y-%m-%d'),
+            "appt_time": time,
+            "appt_status": status,
+            "appt_reason": reason
+        }})
 
-        # If no validation errors, update patient data
-        if not errors:
-            patient_data = {
-                "PatientName": patient_name,
-                "NRIC": nric,
-                "PatientGender": patient_gender,
-                "PatientHeight": patient_height,
-                "PatientWeight": patient_weight,
-                "PatientDOB": datetime.strptime(patient_dob, '%Y-%m-%d') if patient_dob else None,
-                "Email": email,
-                "Username": username,
-                "ContactNumber": contact_number,
-                "Address": address,
-                "Password": generate_password_hash(password, method='pbkdf2:sha256') if password else None
-            }
+        flash('Appointment updated successfully!', 'success')
+        return redirect(url_for('staff.manage_appointment'))
 
-            # Update document in MongoDB
-            db['Users'].update_one({'_id': ObjectId(patient_id)}, {"$set": patient_data})
-            flash('Patient details updated successfully!', 'success')
-            return redirect(url_for('staff.staff_dashboard'))
-        else:
-            for error in errors.values():
-                flash(error, 'danger')
+    appointment = db.appointments.find_one({"_id": ObjectId(appt_id)})
+    return render_template('edit_appointment.html', appointment=appointment)
 
-    # Fetch patient details for rendering
-    patient = db['Users'].find_one({'_id': ObjectId(patient_id)})
-    if not patient:
-        flash('Patient not found', 'danger')
-        return redirect(url_for('staff.staff_dashboard'))
-
-    return render_template('edit_patient.html', patient=patient, errors=errors)
-
-# Book appointment for staff
+# Book appointment route
 @staff_bp.route('/staff_book_appointment', methods=['GET', 'POST'])
 def staff_book_appointment():
     if 'user_id' not in session:
         flash('Please log in as staff to book an appointment.')
         return redirect(url_for('auth.login'))
 
-    db = get_db_connection()
     today = datetime.now().date()
     one_week_later = today + timedelta(days=7)
 
@@ -988,27 +1186,48 @@ def staff_book_appointment():
         appt_time = request.form.get('appt_time')
         appt_reason = request.form.get('appt_reason')
 
-        patient = db['Users'].find_one({"NRIC": nric})
+        if not nric or not appt_date or not appt_time or not appt_reason:
+            flash('All fields are required.')
+            return redirect(url_for('staff.staff_book_appointment'))
+
+        try:
+            appt_date_obj = datetime.strptime(appt_date, '%Y-%m-%d').date()
+            appt_time_obj = datetime.strptime(appt_time, '%H:%M').time()
+            if appt_time_obj.minute not in [0, 30]:
+                flash('Appointments must be booked at 30-minute intervals.')
+                return redirect(url_for('staff.staff_book_appointment'))
+        except ValueError:
+            flash('Invalid date or time format.')
+            return redirect(url_for('staff.staff_book_appointment'))
+
+        if appt_date_obj < today or appt_date_obj > one_week_later:
+            flash('Appointments can only be booked within the next 7 days.')
+            return redirect(url_for('staff.staff_book_appointment'))
+
+        db = get_db_connection()
+
+        patient = db.patients.find_one({"nric": nric})
         if not patient:
             flash('Patient NRIC not found. Please contact support.')
             return redirect(url_for('staff.staff_book_appointment'))
 
-        # Check if slot is available
-        existing_appointment = db['Appointments'].find_one({
-            "ApptDate": appt_date,
-            "ApptTime": appt_time
+        patient_id = patient['_id']
+
+        existing_appointment = db.appointments.find_one({
+            "appt_date": appt_date_obj,
+            "appt_time": appt_time
         })
 
         if existing_appointment:
             flash('This appointment slot is already taken. Please choose another time.')
             return redirect(url_for('staff.staff_book_appointment'))
 
-        db['Appointments'].insert_one({
-            "PatientID": patient["_id"],
-            "ApptDate": appt_date,
-            "ApptTime": appt_time,
-            "ApptStatus": "Pending",
-            "ApptReason": appt_reason
+        db.appointments.insert_one({
+            "patient_id": patient_id,
+            "appt_date": appt_date_obj,
+            "appt_time": appt_time,
+            "appt_status": 'Pending',
+            "appt_reason": appt_reason
         })
 
         flash('Appointment booked successfully!', 'success')
@@ -1016,20 +1235,24 @@ def staff_book_appointment():
 
     return render_template('staff_book_appointment.html', min_date=today, max_date=one_week_later)
 
-# Delete appointment route
+# Delete appointments route
 @staff_bp.route('/delete_appointment/<string:appt_id>', methods=['POST'])
 def delete_appointment(appt_id):
     db = get_db_connection()
-    db['Appointments'].delete_one({"_id": ObjectId(appt_id)})
+    db.appointments.delete_one({"_id": ObjectId(appt_id)})
+
     flash('Appointment deleted successfully!', 'success')
     return redirect(url_for('staff.manage_appointment'))
 
-# Complete appointment route
+# Update ApptStatus route
 @staff_bp.route('/complete_appointment/<string:appt_id>', methods=['POST'])
 def complete_appointment(appt_id):
     db = get_db_connection()
-    db['Appointments'].update_one({"_id": ObjectId(appt_id)}, {"$set": {"ApptStatus": "Completed"}})
-    flash('Appointment completed successfully!', 'success')
+
+    try:
+        db.appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {"appt_status": 'Completed'}})
+        flash('Appointment completed successfully!', 'success')
+    except Exception as e:
+        flash('Error completing the appointment: {}'.format(str(e)), 'danger')
+
     return redirect(url_for('staff.manage_appointment'))
-
-

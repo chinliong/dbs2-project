@@ -224,21 +224,28 @@ from bson.objectid import ObjectId
 def patient_dashboard():
     if 'is_staff' in session and session['is_staff'] == 0:
         db = get_db_connection()
-
+        
         # Fetch user details
-        user = db['Users'].find_one({"_id": ObjectId(session['user_id'])})
+        user = db.Users.find_one({"_id": ObjectId(session['user_id'])})
+        if user is None:
+            flash('User not found. Please log in again.', 'danger')
+            return redirect(url_for('auth.login'))
 
         # Fetch patient details
-        patient = db['Patients'].find_one({"UserID": ObjectId(session['user_id'])})
+        patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
+        if patient is None:
+            flash('Patient details not found. Please contact support.', 'danger')
+            return redirect(url_for('auth.login'))
 
-        # Fetch appointments for the patient
-        appointments = list(db['Appointments'].find({"PatientID": patient['_id']}).sort([("ApptDate", -1), ("ApptTime", -1)]))
+        # Fetch appointments for patient
+        appointments = list(db.Appointments.find({"patient_id": patient['_id']}).sort([("appt_date", -1), ("appt_time", -1)]))
 
         return render_template('patient_dashboard.html', user=user, patient=patient, appointments=appointments)
     else:
         flash('Please login or create a new account to access our services.')
         return redirect(url_for('auth.login'))
-    
+
+
 # Update account route
 @patient_bp.route('/update_account', methods=['GET', 'POST'])
 def update_account():
@@ -253,7 +260,7 @@ def update_account():
         password = request.form['password']
         address = request.form.get('address')
         contact_number = request.form.get('contact_number')
-        
+
         # Validation checks
         if address and not is_valid_sg_address(address):
             flash('Invalid Singapore address. Please provide a valid address with a 6-digit postal code.')
@@ -263,31 +270,29 @@ def update_account():
             flash('Invalid Singapore phone number. Please provide a valid 8-digit number starting with 6, 8, or 9.')
             return redirect(url_for('patient.update_account'))
 
-        # Check if email is in use by another account
-        existing_user = db['Users'].find_one({"Email": email, "_id": {"$ne": ObjectId(session['user_id'])}})
+        # Check if email already exists for another user
+        existing_user = db.Users.find_one({"Email": email, "_id": {"$ne": ObjectId(session['user_id'])}})
+
         if existing_user:
             flash('Email is already in use by another account.')
             return redirect(url_for('patient.update_account'))
 
-        # Get the existing user record
-        user = db['Users'].find_one({"_id": ObjectId(session['user_id'])})
-        if not user:
-            flash('User not found.')
-            return redirect(url_for('auth.login'))
+        # Fetch hashed password from DB
+        user = db.Users.find_one({"_id": ObjectId(session['user_id'])})
+        existing_hashed_password = user['Password']
 
-        # Set password to new hashed password if provided
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256') if password.strip() else user['Password']
+        # Check if there is new password, if not keep the old one
+        hashed_password = generate_password_hash(password, method='pbkdf2:sha256') if password.strip() else existing_hashed_password
 
-        # Update user details
-        db['Users'].update_one(
+        # Update new details into the DB
+        db.Users.update_one(
             {"_id": ObjectId(session['user_id'])},
             {"$set": {
                 "Username": username,
                 "Email": email,
                 "Password": hashed_password,
                 "Address": address,
-                "ContactNumber": contact_number,
-                "IsStaff": user['IsStaff']
+                "ContactNumber": contact_number
             }}
         )
 
@@ -296,10 +301,13 @@ def update_account():
         flash('Account updated successfully!', 'success')
         return redirect(url_for('patient.update_account'))
 
-    # Fetch current user's data
-    user = db['Users'].find_one({"_id": ObjectId(session['user_id'])})
+    # Fetch the current user's data
+    user = db.Users.find_one({"_id": ObjectId(session['user_id'])})
+    patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
 
-    return render_template('update_account.html', user=user)
+    return render_template('update_account.html', user=user, patient=patient)
+
+
 
 # Book and view appointment(s) route
 @patient_bp.route('/book_appointment', methods=['GET', 'POST'])
@@ -312,11 +320,11 @@ def book_appointment():
         flash('Staff members cannot book appointments.')
         return redirect(url_for('staff.staff_dashboard'))
 
+    # Get the current date and the date one week from now
     today = datetime.now().date()
     one_week_later = today + timedelta(days=7)
 
     if request.method == 'POST':
-        db = get_db_connection()
         appt_date = request.form.get('appt_date')
         appt_time = request.form.get('appt_time')
         appt_reason = request.form.get('appt_reason')
@@ -326,10 +334,12 @@ def book_appointment():
             flash('All fields are required.')
             return redirect(url_for('patient.book_appointment'))
 
+        # Validate date and time
         try:
             appt_date_obj = datetime.strptime(appt_date, '%Y-%m-%d').date()
             appt_time_obj = datetime.strptime(appt_time, '%H:%M').time()
 
+            # Ensure appointments are in 30-minute intervals
             if appt_time_obj.minute not in [0, 30]: 
                 flash('Appointments must be booked at 30-minute intervals.')
                 return redirect(url_for('patient.book_appointment'))
@@ -337,38 +347,45 @@ def book_appointment():
             flash('Invalid date or time format.')
             return redirect(url_for('patient.book_appointment'))
 
+        # Validation for if patient books an invalid time for an appointment
         if appt_date_obj < datetime.today().date():
             flash('Appointment date must be in the future.')
             return redirect(url_for('patient.book_appointment'))
 
+        # Validation for appointment date range
         if appt_date_obj < today or appt_date_obj > one_week_later:
             flash('Appointments can only be booked within the next 7 days.')
             return redirect(url_for('patient.book_appointment'))
 
+        db = get_db_connection()
+
         # Fetch PatientID
-        patient = db['Patients'].find_one({"UserID": ObjectId(session['user_id'])})
+        patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
 
         if not patient:
             flash('Patient record not found. Please contact support.')
             return redirect(url_for('patient.patient_dashboard'))
 
+        patient_id = patient['_id']
+
+        # Convert `appt_time_obj` to a string to store in MongoDB
+        appt_date_datetime = datetime.combine(appt_date_obj, datetime.min.time())
+        appt_time_str = appt_time_obj.strftime('%H:%M')
+
         # Check if the appointment slot is available
-        existing_appointment = db['Appointments'].find_one({
-            "ApptDate": appt_date_obj,
-            "ApptTime": appt_time_obj
-        })
+        existing_appointment = db.Appointments.find_one({"appt_date": appt_date_datetime, "appt_time": appt_time_str})
 
         if existing_appointment:
             flash('This appointment slot is already taken. Please choose another time.')
             return redirect(url_for('patient.book_appointment'))
 
         # Insert the appointment into the Appointments collection
-        db['Appointments'].insert_one({
-            "PatientID": patient['_id'],
-            "ApptDate": appt_date_obj,
-            "ApptTime": appt_time_obj,
-            "ApptStatus": "Pending",
-            "ApptReason": appt_reason
+        db.Appointments.insert_one({
+            "patient_id": patient_id,
+            "appt_date": appt_date_datetime,
+            "appt_time": appt_time_str,
+            "appt_status": 'Pending',
+            "appt_reason": appt_reason
         })
 
         flash('Appointment booked successfully!', 'success')

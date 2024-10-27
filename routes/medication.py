@@ -162,7 +162,6 @@ from db import get_db_connection
 from datetime import datetime
 from bson.objectid import ObjectId
 
-# View medications list
 @medication_bp.route('/medications')
 def medications():
     if not session.get('is_staff') == 1:
@@ -170,13 +169,17 @@ def medications():
         return redirect(url_for('patient.patient_dashboard'))
 
     db = get_db_connection()
+    medications_collection = db['Medications']
+
+    # Get the search query from the URL parameters (GET request)
     search_query = request.args.get('search')
 
-    # Query with search functionality
     if search_query:
-        medications = list(db['Medications'].find({"name": {"$regex": search_query, "$options": "i"}}).sort("name", 1))
+        # Filter medications by name using a case-insensitive regex
+        medications = list(medications_collection.find({"name": {"$regex": search_query, "$options": "i"}}).sort("name", 1))
     else:
-        medications = list(db['Medications'].find().sort("name", 1))
+        # Fetch all medications sorted ASC by name
+        medications = list(medications_collection.find().sort("name", 1))
 
     return render_template('medications.html', medications=medications)
 
@@ -187,6 +190,7 @@ def update_medication_quantity():
         flash("You do not have permission to update medication quantities.")
         return redirect(url_for('patient.patient_dashboard'))
 
+    # Get the form data
     medication_id = request.form.get('medication_id')
     quantity_change = int(request.form.get('quantity_change'))
 
@@ -196,31 +200,34 @@ def update_medication_quantity():
         return redirect(url_for('medication.medications'))
 
     db = get_db_connection()
+    medications_collection = db['Medications']
+    inventory_logs_collection = db['InventoryLogs']
 
     # Fetch current quantity of the medication
-    medication = db['Medications'].find_one({"_id": ObjectId(medication_id)})
+    medication = medications_collection.find_one({"_id": ObjectId(medication_id)})
 
     if not medication:
         flash('Medication not found.', 'danger')
         return redirect(url_for('medication.medications'))
 
-    # Update the quantity in MongoDB
+    # Update the quantity in the DB
     new_quantity = medication['quantity'] + quantity_change
-    db['Medications'].update_one({"_id": ObjectId(medication_id)}, {"$set": {"quantity": new_quantity}})
+    medications_collection.update_one({"_id": ObjectId(medication_id)}, {"$set": {"quantity": new_quantity}})
 
-    # Log the inventory change in InventoryLogs
+    # Add a tracking log to InventoryLogs collection based on the user input
     change_type = 'addition' if quantity_change > 0 else 'subtract'
-    db['InventoryLogs'].insert_one({
-        "medication_id": ObjectId(medication_id),
+    inventory_logs_collection.insert_one({
+        "MedID": ObjectId(medication_id),
         "change_type": change_type,
         "quantity_changed": quantity_change,
         "date": datetime.now()
     })
 
     flash(f'Medication ID {medication_id} updated. New quantity: {new_quantity}', 'success')
+
     return redirect(url_for('medication.medications'))
 
-# Add new medication route
+# Adding med route
 @medication_bp.route('/manage_medication', methods=['POST'])
 def manage_medication():
     if not session.get('is_staff') == 1:
@@ -239,9 +246,10 @@ def manage_medication():
         return redirect(url_for('medication.medications'))
 
     db = get_db_connection()
+    medications_collection = db['Medications']
 
-    # Insert new medication into MongoDB
-    db['Medications'].insert_one({
+    # Insert new medication into the Medications collection
+    medications_collection.insert_one({
         "name": name,
         "form": form,
         "dosage": dosage,
@@ -250,9 +258,10 @@ def manage_medication():
     })
 
     flash(f'Medication "{name}" added successfully.', 'success')
+
     return redirect(url_for('medication.medications'))
 
-# Delete medication route
+# Deleting med route
 @medication_bp.route('/delete_medication', methods=['POST'])
 def delete_medication():
     if not session.get('is_staff') == 1:
@@ -266,16 +275,18 @@ def delete_medication():
         return redirect(url_for('medication.medications'))
 
     db = get_db_connection()
+    medications_collection = db['Medications']
 
-    # Check if the medication exists
-    medication = db['Medications'].find_one({"_id": ObjectId(medication_id)})
+    # Pre-check to see if medication exists
+    medication = medications_collection.find_one({"_id": ObjectId(medication_id)})
 
     if not medication:
         flash('Medication not found.', 'danger')
         return redirect(url_for('medication.medications'))
 
-    # Delete the medication
-    db['Medications'].delete_one({"_id": ObjectId(medication_id)})
+    # Delete the medication from the collection
+    medications_collection.delete_one({"_id": ObjectId(medication_id)})
 
     flash(f'Medication ID {medication_id} deleted successfully.', 'success')
+
     return redirect(url_for('medication.medications'))
