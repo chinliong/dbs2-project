@@ -269,60 +269,50 @@
 
     // for advanced search
     document.addEventListener('DOMContentLoaded', function() {
-    // const toggleButton = document.getElementById('toggleAdvancedSearch');
-    const searchForm = document.getElementById('advancedSearchForm');
     const form = document.getElementById('searchForm');
-    const tableBody = document.getElementById('patientTableBody');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
 
-    // toggleButton.addEventListener('click', function() {
-    //     searchForm.style.display = searchForm.style.display === 'none' ? 'block' : 'none';
-    // });
-
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(form);
-        fetch('{{ url_for("staff.advanced_search") }}', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            tableBody.innerHTML = '';
-            data.forEach(patient => {
-                const row = `
-                    <tr>
-                        <td>${patient.Username}</td>
-                        <td>${patient.Email}</td>
-                        <td>${patient.Address}</td>
-                        <td>${patient.ContactNumber}</td>
-                        <td>${patient.PatientName}</td>
-                        <td>${patient.NRIC}</td>
-                        <td>${patient.PatientGender}</td>
-                        <td>${patient.PatientHeight}</td>
-                        <td>${patient.PatientWeight}</td>
-                        <td>${patient.PatientDOB ? patient.PatientDOB.split('T')[0] : 'N/A'}</td>
-                        <td>${patient.diagnosis}</td>
-                        <td>${patient.diagnosis_date ? patient.diagnosis_date.split('T')[0] : 'N/A'}</td>
-                        <td>
-                            <!-- Edit button -->
-                            <a href="/edit_patient/${patient.UserID}" class="btn btn-primary">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <!-- Delete button -->
-                            <form action="/delete_patient/${patient.UserID}" method="POST" style="display:inline;">
-                                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this patient?');">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                `;
-                tableBody.innerHTML += row;
+            fetch('{{ url_for("staff.advanced_search") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const tableBody = document.getElementById('patientTableBody');
+                if (data && data.length > 0) {
+                    tableBody.innerHTML = data.map(patient => `
+                        <tr>
+                            <td>${patient.user.Username || ''}</td>
+                            <td>${patient.user.Email || ''}</td>
+                            <td>${patient.user.Address || ''}</td>
+                            <td>${patient.user.ContactNumber || ''}</td>
+                            <td>${patient.PatientName || ''}</td>
+                            <td>${patient.NRIC || ''}</td>
+                            <td>${patient.PatientGender || ''}</td>
+                            <td>${patient.PatientHeight || ''}</td>
+                            <td>${patient.PatientWeight || ''}</td>
+                            <td>${patient.PatientDOB || ''}</td>
+                            <td>${patient.latest_diagnosis || 'N/A'}</td>
+                            <td>${patient.diagnosis_date || 'N/A'}</td>
+                            <td>
+                                <a href="/edit_patient/${patient._id}" class="btn btn-primary">Edit</a>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="13">No results found</td></tr>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
             });
-        })
-        .catch(error => console.error('Error:', error));
-    });
-    
+        });
+    }
+});
 
     // Function to switch to date input on focus
     function handleFocus(event) {
@@ -349,5 +339,4 @@
     diagnosisDateInput.addEventListener('focus', handleFocus);
     diagnosisDateInput.addEventListener('blur', handleBlur);
 </script>
-
 {% endblock %}

@@ -704,6 +704,7 @@ from utils import is_valid_nric, is_valid_sg_address, is_valid_sg_phone
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
+from bson import json_util
 import logging
 
 # Staff Dashboard route
@@ -763,7 +764,8 @@ def staff_dashboard():
             if nric:
                 patient_query["NRIC"] = {"$regex": nric, "$options": "i"}
             if gender:
-                patient_query["PatientGender"] = gender
+                gender_map = {'Male': 'M', 'Female': 'F'}
+                patient_query["PatientGender"] = gender_map.get(gender, gender)
             if height:
                 try:
                     patient_query["PatientHeight"] = float(height)
@@ -1160,57 +1162,129 @@ def advanced_search():
     if 'is_staff' not in session or session['is_staff'] != 1:
         return jsonify({'error': 'Unauthorized'}), 403
 
-    # Get search parameters from the form
-    filters = {
-        'username': request.form.get('username'),
-        'email': request.form.get('email'),
-        'address': request.form.get('address'),
-        'contact_number': request.form.get('contact_number'),
-        'patient_name': request.form.get('patient_name'),
-        'nric': request.form.get('nric'),
-        'patient_gender': request.form.get('gender'),
-        'patient_height': request.form.get('height'),
-        'patient_weight': request.form.get('weight'),
-        'patient_dob': request.form.get('dob'),
-        'diagnosis': request.form.get('diagnosis'),
-        'diagnosis_date': request.form.get('diagnosis_date')
+    db = get_db_connection()
+
+    pipeline = [
+        {
+            '$lookup': {
+                'from': 'Users',
+                'localField': 'UserID',
+                'foreignField': '_id',
+                'as': 'user'
+            }
+        },
+        {
+            '$unwind': '$user'
+        }
+    ]
+
+    # Build match conditions
+    match_conditions = {
+        'user.IsStaff': 0
     }
 
-    db = get_db_connection()
-    query = {"is_staff": False}
+    # Get form data for all fields
+    username = request.form.get('username', '')
+    email = request.form.get('email', '')
+    address = request.form.get('address', '')
+    contact_number = request.form.get('contact_number', '')
+    patient_name = request.form.get('patient_name', '')
+    nric = request.form.get('nric', '')
+    gender = request.form.get('gender', '')
+    dob = request.form.get('dob', '')
+    height = request.form.get('height', '')
+    weight = request.form.get('weight', '')
+    diagnosis = request.form.get('diagnosis', '')
+    diagnosis_date = request.form.get('diagnosis_date', '')
 
-    # Add filters dynamically if they exist
-    for field, value in filters.items():
-        if value:
-            if field in ['username', 'email', 'address', 'contact_number', 'patient_name', 'nric', 'diagnosis']:
-                query[field] = {"$regex": value, "$options": "i"}
-            elif field == 'patient_gender':
-                query['patient_gender'] = value
-            elif field in ['patient_height', 'patient_weight']:
-                try:
-                    query[field] = float(value)
-                except ValueError:
-                    continue
-            elif field == 'patient_dob':
-                query['patient_dob'] = datetime.strptime(value, '%Y-%m-%d')
-            elif field == 'diagnosis_date':
-                try:
-                    query['diagnosis.diagnosis_date'] = datetime.strptime(value, '%Y-%m-%d')
-                except ValueError:
-                    logging.warning(f"Invalid date format for diagnosis_date: {value}")
-                    continue
+    if username:
+        match_conditions['user.Username'] = {'$regex': username, '$options': 'i'}
+    if email:
+        match_conditions['user.Email'] = {'$regex': email, '$options': 'i'}
+    if address: 
+        match_conditions['user.Address'] = {'$regex': address, '$options': 'i'}
+    if patient_name:
+        match_conditions['PatientName'] = {'$regex': patient_name, '$options': 'i'}
+    if contact_number:  
+        match_conditions['user.ContactNumber'] = {'$regex': contact_number, '$options': 'i'}
+    if nric:
+        match_conditions['NRIC'] = {'$regex': nric, '$options': 'i'}
+    if gender:
+        if gender in ['Male', 'Female']:
+            gender_map = {'Male': 'M', 'Female': 'F'}
+            match_conditions['PatientGender'] = gender_map[gender]
+    if height:
+        try:
+            match_conditions['PatientHeight'] = float(height)
+        except ValueError:
+            pass
+    if weight:
+        try:
+            match_conditions['PatientWeight'] = float(weight)
+        except ValueError:
+            pass
+    if dob:
+        try:
+            dob_date = datetime.strptime(dob, '%Y-%m-%d')
+            match_conditions['PatientDOB'] = dob_date
+        except ValueError:
+            pass
 
-    # Execute the query
-    results = list(db.Patients.find(query))
+    # Add diagnosis lookup if needed
+    if diagnosis or diagnosis_date:
+        pipeline.extend([
+            {
+                '$lookup': {
+                    'from': 'PatientHistory',
+                    'localField': '_id',
+                    'foreignField': 'patient_id',
+                    'as': 'history'
+                }
+            },
+            {
+                '$unwind': {
+                    'path': '$history',
+                    'preserveNullAndEmptyArrays': True
+                }
+            }
+        ])
 
-    # Format the results for DOB and diagnosis_date
-    for result in results:
-        if result.get('patient_dob'):
-            result['patient_dob'] = result['patient_dob'].strftime('%Y-%m-%d')
-        if result.get('diagnosis', {}).get('diagnosis_date'):
-            result['diagnosis']['diagnosis_date'] = result['diagnosis']['diagnosis_date'].strftime('%Y-%m-%d')
+        if diagnosis:
+            match_conditions['history.diagnosis'] = {'$regex': diagnosis, '$options': 'i'}
+        if diagnosis_date:
+            try:
+                diag_date = datetime.strptime(diagnosis_date, '%Y-%m-%d')
+                match_conditions['history.date'] = diag_date
+            except ValueError:
+                pass
 
-    return jsonify(results)
+    # Add match conditions to pipeline
+    if match_conditions:
+        pipeline.append({'$match': match_conditions})
+
+    try:
+        patients = list(db.Patients.aggregate(pipeline))
+        
+        # Format dates and convert ObjectIds to strings
+        for patient in patients:
+            # Convert ObjectId to string
+            patient['_id'] = str(patient['_id'])
+            patient['UserID'] = str(patient['UserID'])
+            # Convert user ObjectId
+            if 'user' in patient:
+                patient['user']['_id'] = str(patient['user']['_id'])
+            
+            # Format dates
+            if 'PatientDOB' in patient and patient['PatientDOB']:
+                patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
+            if 'history' in patient and patient['history'].get('date'):
+                patient['diagnosis_date'] = patient['history']['date'].strftime('%Y-%m-%d')
+                patient['latest_diagnosis'] = patient['history'].get('diagnosis')
+
+        return json_util.dumps(patients)
+    except Exception as e:
+        print("Error occurred:", str(e))
+        return jsonify({'error': str(e)}), 500
 
 # Staff only feature: edit appointments for patients
 @staff_bp.route('/edit_appointment/<string:appt_id>', methods=['GET', 'POST'])
