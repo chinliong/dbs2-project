@@ -788,6 +788,30 @@ def staff_dashboard():
             if patient:
                 # Attach user information to the patient details for better rendering
                 patient['user'] = user
+
+                # Fetch latest diagnosis if required for filtering
+                if diagnosis or diagnosis_date:
+                    patient_history_query = {"patient_id": patient["_id"]}
+                    if diagnosis:
+                        patient_history_query["diagnosis"] = {"$regex": diagnosis, "$options": "i"}
+                    if diagnosis_date:
+                        try:
+                            patient_history_query["date"] = datetime.strptime(diagnosis_date, '%Y-%m-%d')
+                        except ValueError:
+                            flash("Invalid Diagnosis Date format.")
+                            return redirect(url_for('staff.staff_dashboard'))
+
+                    # Fetch the latest diagnosis entry that matches the query
+                    latest_diagnosis = db.PatientHistory.find_one(patient_history_query, sort=[("date", -1)])
+                    
+                    if latest_diagnosis:
+                        patient['latest_diagnosis'] = latest_diagnosis.get("diagnosis", "")
+                        patient['diagnosis_date'] = latest_diagnosis.get("date", "")
+                    else:
+                        # Skip patient if diagnosis filter is provided but not matched
+                        if diagnosis or diagnosis_date:
+                            continue
+
                 patients.append(patient)
                 
         # Format PatientDOB and DiagnosisDate before passing to the template
