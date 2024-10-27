@@ -4,7 +4,7 @@
 <h1>Patient Information</h1>
 
 {% if patient %}
-    <h2>{{ patient[2] }} </h2> 
+    <h2>{{ patient['PatientName'] }}</h2> 
     <h3>Appointment ID: {{ appt_id }}</h3>
     <form method="POST">
         <div class="mb-3">
@@ -28,11 +28,11 @@
             </tr>
         </thead>
         <tbody>
-            {% for record in history %} <!-- [] is based on the colums in PatientHistory table -->
+            {% for record in history %}
             <tr>
-                <td>{{ record[5].strftime('%Y-%m-%d') }}</td> <!-- Date -->
-                <td>{{ record[3] }}</td> <!-- Diagnosis -->
-                <td>{{ record[4] }}</td> <!-- Notes -->
+                <td>{{ record['date'].strftime('%Y-%m-%d') if record['date'] else 'N/A' }}</td> <!-- Date -->
+                <td>{{ record['diagnosis'] }}</td> <!-- Diagnosis -->
+                <td>{{ record['notes'] }}</td> <!-- Notes -->
             </tr>
             {% endfor %}
         </tbody>
@@ -42,48 +42,47 @@
     <form id="prescription_form" method="POST">
         <div class="mb-3">
             <label for="medication">Medication:</label>
-            <input type="text" name="medication" id="medication" onkeyup="fetchMedications()" required class="form-control w-50" rows="5">
+            <input type="text" name="medication" id="medication" onkeyup="fetchMedications()" required class="form-control w-50">
             <ul id="medication_list" class="dropdown-list"></ul>
         </div>
         <div class="mb-3">
             <label for="duration">Quantity:</label>
-            <input type="text" name="duration" id="duration" required class="form-control w-50" rows="5">
+            <input type="number" name="duration" id="duration" required class="form-control w-50">
         </div>
         <div class="mb-3">
-            <label for="notes">Medications Instructions:</label>
+            <label for="notes">Medication Instructions:</label>
             <textarea name="notes" id="notes" class="form-control w-50" rows="5"></textarea>
         </div>
         <input type="hidden" name="appt_id" value="{{ appt_id }}">
-        <input type="hidden" name="patient_id" value="{{ patient[0] }}">
         <button type="submit" class="btn btn-primary">Prescribe</button>
     </form>
 
     <h3>Past Prescriptions</h3>
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Prescription ID</th>
-            <th>Medication Name</th>
-            <th>Dispensed Quantity</th>
-            <th>Instructions</th>
-            <th>Date</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for prescription in prescriptions %} <!-- [] is based on the colums in Prescriptions table -->
-        <tr>
-            <td>{{ prescription[0] }}</td> <!-- PrescriptionID -->
-            <td>{{ prescription[1] }}</td> <!-- Med Name -->
-            <td>{{ prescription[2] }}</td> <!-- Dosage -->
-            <td>{{ prescription[4] }}</td> <!-- Notes -->
-            <td>{{ prescription[3].strftime('%Y-%m-%d')}}</td> <!-- Dates -->
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Prescription ID</th>
+                <th>Medication Name</th>
+                <th>Dispensed Quantity</th>
+                <th>Instructions</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for prescription in prescriptions %}
+            <tr>
+                <td>{{ prescription['prescription_id'] }}</td> <!-- Prescription ID -->
+                <td>{{ prescription['medication_name'] }}</td> <!-- Medication Name -->
+                <td>{{ prescription['dosage'] }}</td> <!-- Dosage -->
+                <td>{{ prescription['notes'] }}</td> <!-- Notes -->
+                <td>{{ prescription['date'].strftime('%Y-%m-%d') if prescription['date'] else 'N/A' }}</td> <!-- Date -->
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
     <form method="POST" action="{{ url_for('staff.complete_appointment', appt_id=appt_id) }}">
-        <input type="hidden" name="patient_id" value="{{ patient[0] }}">
+        <input type="hidden" name="patient_id" value="{{ patient['_id'] }}">
         <button type="submit" class="btn btn-success">Complete Appointment</button>
     </form>
 
@@ -122,7 +121,7 @@
             }
         }, 3000);  // 3000 ms = 3 seconds
     </script>
-    
+
     <!-- Additional styling -->
     <style>
         .dropdown-list {
@@ -130,12 +129,12 @@
             border-radius: 4px;
             list-style-type: none;
         }
-    
+
         .dropdown-list li {
             padding: 8px;
             cursor: pointer;
         }
-    
+
         .dropdown-list li:hover {
             background-color: #f0f0f0;
         }

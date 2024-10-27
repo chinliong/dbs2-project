@@ -15,14 +15,15 @@
     {% endif %}
 {% endwith %}
 
+<!-- Appointment Table -->
 <table class="table table-striped">
     <thead>
         <tr>
-            <th>Apptintment ID</th>
+            <th>Appointment ID</th>
             <th>Patient ID</th>
-            <th>Apptintment Date</th>
-            <th>Apptintment Time</th>
-            <th>Apptintment Status</th>
+            <th>Appointment Date</th>
+            <th>Appointment Time</th>
+            <th>Appointment Status</th>
             <th>Appointment Reason</th>
             <th></th>
         </tr>
@@ -30,16 +31,26 @@
     <tbody>
         {% for appointment in appointments %}
         <tr>
-            <td>{{ appointment[0] }}</td>  <!-- ApptID -->
-            <td>{{ appointment[1] }}</td>  <!-- PatientID -->
-            <td>{{ appointment[2] }}</td>  <!-- ApptDate -->
-            <td>{{ appointment[3] }}</td>  <!-- ApptTime -->
-            <td>{{ appointment[4] }}</td>  <!-- AppStatus -->
-            <td>{{ appointment[5] }}</td>  <!-- AppReason -->
-            <td><a href="{{ url_for('staff.view_patient', patient_id=appointment[1], appt_id=appointment[0]) }}" class="btn btn-primary">View
-                Patient</a></td>
-            <td><a href="{{ url_for('staff.edit_appointment', patient_id=appointment[1], appt_id=appointment[0]) }}" class="btn btn-primary">Edit 
-                Appointment</a></td>
+            <td>{{ appointment.get('_id') }}</td>  <!-- Appointment ID -->
+            <td>{{ appointment.get('patient_id') }}</td>  <!-- Patient ID -->
+            <td>{{ appointment.get('appt_date', 'N/A') }}</td>  <!-- Appointment Date -->
+            <td>{{ appointment.get('appt_time', 'N/A') }}</td>  <!-- Appointment Time -->
+            <td>
+                {% if appointment.get('appt_status') == 'Confirmed' %}
+                    <span class="badge badge-success">{{ appointment.get('appt_status') }}</span>
+                {% elif appointment.get('appt_status') == 'Pending' %}
+                    <span class="badge badge-warning">{{ appointment.get('appt_status') }}</span>
+                {% elif appointment.get('appt_status') == 'Cancelled' %}
+                    <span class="badge badge-danger">{{ appointment.get('appt_status') }}</span>
+                {% else %}
+                    <span class="badge badge-secondary">{{ appointment.get('appt_status', 'N/A') }}</span>
+                {% endif %}
+            </td>
+            <td>{{ appointment.get('appt_reason', 'N/A') }}</td>  <!-- Appointment Reason -->
+            <td>
+                <a href="{{ url_for('staff.view_patient', patient_id=appointment.get('patient_id'), appt_id=appointment.get('_id')) }}" class="btn btn-primary">View Patient</a>
+                <a href="{{ url_for('staff.edit_appointment', patient_id=appointment.get('patient_id'), appt_id=appointment.get('_id')) }}" class="btn btn-primary">Edit Appointment</a>
+            </td>
         </tr>
         {% endfor %}
     </tbody>

@@ -944,11 +944,11 @@ def delete_patient(patient_id):
 
     try:
         # Delete from all collections associated with patients
-        db.prescriptions.delete_many({"patient_id": ObjectId(patient_id)})
-        db.patient_history.delete_many({"patient_id": ObjectId(patient_id)})
-        db.appointments.delete_many({"patient_id": ObjectId(patient_id)})
-        db.patients.delete_one({"_id": ObjectId(patient_id)})
-        db.users.delete_one({"_id": ObjectId(patient_id)})
+        db.Prescriptions.delete_many({"patient_id": ObjectId(patient_id)})
+        db.PatientHistory.delete_many({"patient_id": ObjectId(patient_id)})
+        db.Appointments.delete_many({"patient_id": ObjectId(patient_id)})
+        db.Patients.delete_one({"_id": ObjectId(patient_id)})
+        db.Users.delete_one({"_id": ObjectId(patient_id)})
 
         flash('Patient and associated appointments deleted successfully!', 'success')
     except Exception as err:
@@ -968,54 +968,74 @@ def manage_appointment():
         end_date = start_date + timedelta(days=7)
 
         # Fetch appointments in the next 7 days sorted by earliest first
-        appointments = list(db.appointments.find({
+        appointments = list(db.Appointments.find({
             "appt_date": {"$gte": start_date, "$lte": end_date},
             "appt_status": "Pending"
         }).sort([("appt_date", 1), ("appt_time", 1)]))
+
+        # Modify appointments to ensure date and time are formatted as strings
+        for appointment in appointments:
+            if 'appt_date' in appointment and isinstance(appointment['appt_date'], str):
+                try:
+                    appointment['appt_date'] = datetime.strptime(appointment['appt_date'], '%Y-%m-%d')
+                except ValueError:
+                    appointment['appt_date'] = None  # Handle invalid date formats
+
+            if 'appt_time' in appointment and isinstance(appointment['appt_time'], str):
+                try:
+                    appointment['appt_time'] = datetime.strptime(appointment['appt_time'], '%H:%M').time()
+                except ValueError:
+                    appointment['appt_time'] = None  # Handle invalid time formats
 
         return render_template('manage_appointment.html', appointments=appointments)
     else:
         flash('Please login or create a new account to access our services.')
         return redirect(url_for('auth.login'))
 
+
 # View patient details
 @staff_bp.route('/view_patient/<string:patient_id>/<string:appt_id>', methods=['GET', 'POST'])
 def view_patient(patient_id, appt_id):
     db = get_db_connection()
 
+    # Convert patient_id to ObjectId
+    try:
+        patient_object_id = ObjectId(patient_id)
+    except Exception as e:
+        flash(f"Error converting patient_id to ObjectId: {e}", "danger")
+        return redirect(url_for('staff.staff_dashboard'))
+
+    # Check if POST for adding medication or diagnosis
     if request.method == 'POST':
-        # Check if we are saving a prescription
         if 'medication' in request.form:
+            # Handle medication prescription
             medication_name = request.form['medication']
-            # Extract only the medication name from the display text
             med_name_only = medication_name.split(' (')[0]
             duration = request.form['duration']
             notes = request.form['notes']
 
-            # Fetch the medication based on med name
-            med = db.medications.find_one({"name": med_name_only})
+            med = db.Medications.find_one({"name": med_name_only})
 
             if med:
                 med_id = med['_id']
                 current_quantity = med['quantity']
                 requested_dosage = int(duration)
 
-                # Check if there is enough medication
                 if current_quantity >= requested_dosage:
-                    # Insert into Prescriptions collection
-                    db.prescriptions.insert_one({
-                        "patient_id": ObjectId(patient_id),
+                    # Insert prescription
+                    db.Prescriptions.insert_one({
+                        "patient_id": patient_object_id,
                         "appt_id": ObjectId(appt_id),
                         "med_id": med_id,
                         "dosage": requested_dosage,
                         "date": datetime.now(),
                         "notes": notes
                     })
-                    # Deduct the quantity
-                    db.medications.update_one({"_id": med_id}, {"$inc": {"quantity": -requested_dosage}})
+                    # Update quantity
+                    db.Medications.update_one({"_id": med_id}, {"$inc": {"quantity": -requested_dosage}})
 
-                    # Insert an entry into Inventory logs
-                    db.inventory_logs.insert_one({
+                    # Insert inventory log
+                    db.InventoryLogs.insert_one({
                         "med_id": med_id,
                         "change_type": 'subtract',
                         "quantity_changed": requested_dosage,
@@ -1028,13 +1048,13 @@ def view_patient(patient_id, appt_id):
             else:
                 flash('Medication not found!', 'danger')
         else:
-            # Save the diagnosis and notes
+            # Handle patient history addition
             diagnosis = request.form['diagnosis']
             notes = request.form['notes']
             date = datetime.now()
 
-            db.patient_history.insert_one({
-                "patient_id": ObjectId(patient_id),
+            db.PatientHistory.insert_one({
+                "patient_id": patient_object_id,
                 "appt_id": ObjectId(appt_id),
                 "diagnosis": diagnosis,
                 "notes": notes,
@@ -1043,11 +1063,27 @@ def view_patient(patient_id, appt_id):
 
             flash('Patient history updated successfully!', 'success')
 
-    # Fetch past patient information, past diagnosis, and prescriptions to display
-    patient_info = db.patients.find_one({"_id": ObjectId(patient_id)})
-    patient_history = list(db.patient_history.find({"patient_id": ObjectId(patient_id)}))
-    past_prescriptions = list(db.prescriptions.aggregate([
-        {"$match": {"patient_id": ObjectId(patient_id)}},
+    # Fetch patient information
+    patient_info = db.Patients.find_one({"_id": patient_object_id})
+
+    # Debugging statement to help understand what was fetched
+    if not patient_info:
+        flash(f"Patient not found for patient_id: {patient_id}", "danger")
+        return redirect(url_for('staff.staff_dashboard'))
+    else:
+        print(f"Patient Info Found: {patient_info}")  # Add this line to verify what patient details are being retrieved
+
+    # Fetch patient history
+    patient_history = list(db.PatientHistory.find({"patient_id": patient_object_id}))
+
+    # Convert date fields for patient history to string
+    for record in patient_history:
+        if 'date' in record and isinstance(record['date'], datetime):
+            record['date'] = record['date'].strftime('%Y-%m-%d')
+
+    # Fetch past prescriptions
+    past_prescriptions = list(db.Prescriptions.aggregate([
+        {"$match": {"patient_id": patient_object_id}},
         {"$lookup": {
             "from": "medications",
             "localField": "med_id",
@@ -1056,7 +1092,7 @@ def view_patient(patient_id, appt_id):
         }},
         {"$unwind": "$medication_details"},
         {"$project": {
-            "prescription_id": 1,
+            "prescription_id": "$_id",
             "medication_name": "$medication_details.name",
             "dosage": 1,
             "date": 1,
@@ -1064,7 +1100,13 @@ def view_patient(patient_id, appt_id):
         }}
     ]))
 
+    # Convert prescription dates to string
+    for prescription in past_prescriptions:
+        if 'date' in prescription and isinstance(prescription['date'], datetime):
+            prescription['date'] = prescription['date'].strftime('%Y-%m-%d')
+
     return render_template('view_patient.html', patient=patient_info, history=patient_history, prescriptions=past_prescriptions, appt_id=appt_id)
+
 
 # Fetch medications route
 @staff_bp.route('/fetch_medications')
@@ -1073,7 +1115,7 @@ def fetch_medications():
     db = get_db_connection()
 
     # Fetch medications that match the user's input
-    medications = list(db.medications.find({"name": {"$regex": query, "$options": "i"}}))
+    medications = list(db.Medications.find({"name": {"$regex": query, "$options": "i"}}))
 
     # Prepare response data based on columns in med table
     medication_list = [
@@ -1135,7 +1177,7 @@ def advanced_search():
                     continue
 
     # Execute the query
-    results = list(db.patients.find(query))
+    results = list(db.Patients.find(query))
 
     # Format the results for DOB and diagnosis_date
     for result in results:
@@ -1157,7 +1199,7 @@ def edit_appointment(appt_id):
         status = request.form['status']
         reason = request.form['reason']
 
-        db.appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {
+        db.Appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {
             "appt_date": datetime.strptime(date, '%Y-%m-%d'),
             "appt_time": time,
             "appt_status": status,
@@ -1167,7 +1209,7 @@ def edit_appointment(appt_id):
         flash('Appointment updated successfully!', 'success')
         return redirect(url_for('staff.manage_appointment'))
 
-    appointment = db.appointments.find_one({"_id": ObjectId(appt_id)})
+    appointment = db.Appointments.find_one({"_id": ObjectId(appt_id)})
     return render_template('edit_appointment.html', appointment=appointment)
 
 # Book appointment route
@@ -1206,14 +1248,14 @@ def staff_book_appointment():
 
         db = get_db_connection()
 
-        patient = db.patients.find_one({"nric": nric})
+        patient = db.Patients.find_one({"nric": nric})
         if not patient:
             flash('Patient NRIC not found. Please contact support.')
             return redirect(url_for('staff.staff_book_appointment'))
 
         patient_id = patient['_id']
 
-        existing_appointment = db.appointments.find_one({
+        existing_appointment = db.Appointments.find_one({
             "appt_date": appt_date_obj,
             "appt_time": appt_time
         })
@@ -1222,7 +1264,7 @@ def staff_book_appointment():
             flash('This appointment slot is already taken. Please choose another time.')
             return redirect(url_for('staff.staff_book_appointment'))
 
-        db.appointments.insert_one({
+        db.Appointments.insert_one({
             "patient_id": patient_id,
             "appt_date": appt_date_obj,
             "appt_time": appt_time,
@@ -1239,7 +1281,7 @@ def staff_book_appointment():
 @staff_bp.route('/delete_appointment/<string:appt_id>', methods=['POST'])
 def delete_appointment(appt_id):
     db = get_db_connection()
-    db.appointments.delete_one({"_id": ObjectId(appt_id)})
+    db.Appointments.delete_one({"_id": ObjectId(appt_id)})
 
     flash('Appointment deleted successfully!', 'success')
     return redirect(url_for('staff.manage_appointment'))
@@ -1250,7 +1292,7 @@ def complete_appointment(appt_id):
     db = get_db_connection()
 
     try:
-        db.appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {"appt_status": 'Completed'}})
+        db.Appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {"appt_status": 'Completed'}})
         flash('Appointment completed successfully!', 'success')
     except Exception as e:
         flash('Error completing the appointment: {}'.format(str(e)), 'danger')
