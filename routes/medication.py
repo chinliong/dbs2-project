@@ -2,7 +2,14 @@ from flask import render_template, request, redirect, session, url_for, flash
 from . import medication_bp
 from db import get_db_connection
 from datetime import datetime
-from bson.objectid import ObjectId
+from bson.objectid import ObjectId, InvalidId
+
+def is_valid_objectid(oid):
+    try:
+        ObjectId(oid)
+        return True
+    except InvalidId:
+        return False
 
 @medication_bp.route('/medications')
 def medications():
@@ -34,11 +41,21 @@ def update_medication_quantity():
 
     # Get the form data
     medication_id = request.form.get('medication_id')
-    quantity_change = int(request.form.get('quantity_change'))
+    quantity_change = request.form.get('quantity_change')
 
-    # Check for valid medication and quantity
+    # Check for valid medication_id and quantity
     if not medication_id or not quantity_change:
         flash('Invalid input, please try again.', 'danger')
+        return redirect(url_for('medication.medications'))
+
+    try:
+        quantity_change = int(quantity_change)
+    except ValueError:
+        flash('Quantity change must be a number.', 'danger')
+        return redirect(url_for('medication.medications'))
+
+    if not is_valid_objectid(medication_id):
+        flash('Invalid medication ID format.', 'danger')
         return redirect(url_for('medication.medications'))
 
     db = get_db_connection()
@@ -65,7 +82,7 @@ def update_medication_quantity():
         "date": datetime.now()
     })
 
-    flash(f'Medication ID {medication_id} updated. New quantity: {new_quantity}', 'success')
+    flash(f'Medication "{medication["name"]}" updated. New quantity: {new_quantity}', 'success')
 
     return redirect(url_for('medication.medications'))
 
@@ -87,19 +104,31 @@ def manage_medication():
         flash('All fields are required to add a medication.', 'danger')
         return redirect(url_for('medication.medications'))
 
+    try:
+        quantity = int(quantity)
+    except ValueError:
+        flash('Quantity must be a number.', 'danger')
+        return redirect(url_for('medication.medications'))
+
     db = get_db_connection()
     medications_collection = db['Medications']
 
+    # Fetch the last medication to determine the highest MedID
+    last_medication = list(medications_collection.find().sort("MedID", -1).limit(1))
+    last_med_id = last_medication[0]["MedID"] if len(last_medication) > 0 else 0
+    new_med_id = last_med_id + 1
+
     # Insert new medication into the Medications collection
     medications_collection.insert_one({
+        "MedID": new_med_id,
         "name": name,
         "form": form,
         "dosage": dosage,
-        "quantity": int(quantity),
+        "quantity": quantity,
         "indication": indication
     })
 
-    flash(f'Medication "{name}" added successfully.', 'success')
+    flash(f'Medication "{name}" added successfully with MedID {new_med_id}.', 'success')
 
     return redirect(url_for('medication.medications'))
 
@@ -116,6 +145,10 @@ def delete_medication():
         flash('Invalid medication ID, please try again.', 'danger')
         return redirect(url_for('medication.medications'))
 
+    if not is_valid_objectid(medication_id):
+        flash('Invalid medication ID format.', 'danger')
+        return redirect(url_for('medication.medications'))
+
     db = get_db_connection()
     medications_collection = db['Medications']
 
@@ -129,6 +162,6 @@ def delete_medication():
     # Delete the medication from the collection
     medications_collection.delete_one({"_id": ObjectId(medication_id)})
 
-    flash(f'Medication ID {medication_id} deleted successfully.', 'success')
+    flash(f'Medication "{medication["name"]}" deleted successfully.', 'success')
 
     return redirect(url_for('medication.medications'))
