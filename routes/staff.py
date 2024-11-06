@@ -728,11 +728,10 @@ def staff_dashboard():
         diagnosis = request.args.get('diagnosis', '')
         diagnosis_date = request.args.get('diagnosis_date', '')
 
-        # Build the query for filtering patients
-        # Ensure we query `Users` first, then link to `Patients`
+        # Build the base query for non-staff users
         query = {"IsStaff": 0}
 
-        # Add filters dynamically if they exist (for the `Users` collection)
+        # Add filters for User fields
         if user_id:
             try:
                 query["_id"] = ObjectId(user_id)
@@ -750,15 +749,15 @@ def staff_dashboard():
 
         # Fetch users who are not staff and match the criteria
         user_matches = list(db.Users.find(query))
-
-        # Fetch linked patient information based on matched users
+        
+        # Prepare list to store patient data with latest diagnoses
         patients = []
 
         for user in user_matches:
-            # Find corresponding patient record based on UserID
+            # Find corresponding patient record
             patient_query = {"UserID": user["_id"]}
 
-            # Add additional patient-specific filters if provided
+            # Add patient-specific filters
             if name:
                 patient_query["PatientName"] = {"$regex": name, "$options": "i"}
             if nric:
@@ -770,63 +769,72 @@ def staff_dashboard():
                 try:
                     patient_query["PatientHeight"] = float(height)
                 except ValueError:
-                    flash("Height must be a number.")
-                    return redirect(url_for('staff.staff_dashboard'))
+                    continue
             if weight:
                 try:
                     patient_query["PatientWeight"] = float(weight)
                 except ValueError:
-                    flash("Weight must be a number.")
-                    return redirect(url_for('staff.staff_dashboard'))
+                    continue
             if dob:
                 try:
                     patient_query["PatientDOB"] = datetime.strptime(dob, '%Y-%m-%d')
                 except ValueError:
-                    logging.warning(f"Invalid date format for DOB: {dob}")
                     continue
 
-            # Fetch patient record based on the refined query
             patient = db.Patients.find_one(patient_query)
+            
             if patient:
-                # Attach user information to the patient details for better rendering
+                # Attach user information to patient details
                 patient['user'] = user
 
-                # Fetch latest diagnosis if required for filtering
-                if diagnosis or diagnosis_date:
-                    patient_history_query = {"patient_id": patient["_id"]}
-                    if diagnosis:
-                        patient_history_query["diagnosis"] = {"$regex": diagnosis, "$options": "i"}
-                    if diagnosis_date:
-                        try:
-                            patient_history_query["date"] = datetime.strptime(diagnosis_date, '%Y-%m-%d')
-                        except ValueError:
-                            flash("Invalid Diagnosis Date format.")
-                            return redirect(url_for('staff.staff_dashboard'))
+                # Fetch latest diagnosis
+                diagnosis_query = {"patient_id": patient["_id"]}
+                if diagnosis:
+                    diagnosis_query["diagnosis"] = {"$regex": diagnosis, "$options": "i"}
+                if diagnosis_date:
+                    try:
+                        date_obj = datetime.strptime(diagnosis_date, '%Y-%m-%d')
+                        diagnosis_query["date"] = date_obj
+                    except ValueError:
+                        continue
 
-                    # Fetch the latest diagnosis entry that matches the query
-                    latest_diagnosis = db.PatientHistory.find_one(patient_history_query, sort=[("date", -1)])
-                    
-                    if latest_diagnosis:
-                        patient['latest_diagnosis'] = latest_diagnosis.get("diagnosis", "")
-                        patient['diagnosis_date'] = latest_diagnosis.get("date", "")
-                    else:
-                        # Skip patient if diagnosis filter is provided but not matched
-                        if diagnosis or diagnosis_date:
-                            continue
+                # Get the latest diagnosis
+                latest_diagnosis = db.PatientHistory.find_one(
+                    diagnosis_query,
+                    sort=[("date", -1)]
+                )
+
+                if latest_diagnosis:
+                    patient['latest_diagnosis'] = latest_diagnosis.get("diagnosis", "")
+                    # Format the date if it exists
+                    if 'date' in latest_diagnosis and latest_diagnosis['date']:
+                        if isinstance(latest_diagnosis['date'], datetime):
+                            patient['diagnosis_date'] = latest_diagnosis['date'].strftime('%Y-%m-%d')
+                        else:
+                            # Handle string dates
+                            try:
+                                date_obj = datetime.strptime(str(latest_diagnosis['date']), '%Y-%m-%d')
+                                patient['diagnosis_date'] = date_obj.strftime('%Y-%m-%d')
+                            except ValueError:
+                                patient['diagnosis_date'] = str(latest_diagnosis['date'])
+                else:
+                    patient['latest_diagnosis'] = "No diagnosis"
+                    patient['diagnosis_date'] = "N/A"
 
                 patients.append(patient)
-                
-        # Format PatientDOB and DiagnosisDate before passing to the template
+
+        # Format patient dates before passing to template
         for patient in patients:
-            # Check if PatientDOB is a datetime object before formatting
-            if 'PatientDOB' in patient:
+            if 'PatientDOB' in patient and patient['PatientDOB']:
                 if isinstance(patient['PatientDOB'], datetime):
                     patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
-            
-            # Check if DiagnosisDate is a datetime object before formatting
-            if 'DiagnosisDate' in patient:
-                if isinstance(patient['DiagnosisDate'], datetime):
-                    patient['DiagnosisDate'] = patient['DiagnosisDate'].strftime('%Y-%m-%d')
+                elif isinstance(patient['PatientDOB'], str):
+                    # If it's already a string, try to parse and reformat it
+                    try:
+                        date_obj = datetime.strptime(patient['PatientDOB'], '%Y-%m-%d')
+                        patient['PatientDOB'] = date_obj.strftime('%Y-%m-%d')
+                    except ValueError:
+                        pass
 
         return render_template('staff_dashboard.html', patients=patients)
     else:
@@ -1091,27 +1099,31 @@ def view_patient(patient_id, appt_id):
 
     # Fetch patient information
     patient_info = db.Patients.find_one({"_id": patient_object_id})
-
-    # Debugging statement to help understand what was fetched
     if not patient_info:
         flash(f"Patient not found for patient_id: {patient_id}", "danger")
         return redirect(url_for('staff.staff_dashboard'))
-    else:
-        print(f"Patient Info Found: {patient_info}")  # Add this line to verify what patient details are being retrieved
 
     # Fetch patient history
     patient_history = list(db.PatientHistory.find({"patient_id": patient_object_id}))
 
-    # Convert date fields for patient history to string
+    # Format dates in patient history
     for record in patient_history:
-        if 'date' in record and isinstance(record['date'], datetime):
-            record['date'] = record['date'].strftime('%Y-%m-%d')
+        if 'date' in record:
+            if isinstance(record['date'], datetime):
+                record['date'] = record['date'].strftime('%Y-%m-%d')
+            elif isinstance(record['date'], str):
+                try:
+                    # Try to parse the string date and format it
+                    date_obj = datetime.strptime(record['date'], '%Y-%m-%d')
+                    record['date'] = date_obj.strftime('%Y-%m-%d')
+                except ValueError:
+                    record['date'] = record['date']  # Keep original string if parsing fails
 
     # Fetch past prescriptions
     past_prescriptions = list(db.Prescriptions.aggregate([
         {"$match": {"patient_id": patient_object_id}},
         {"$lookup": {
-            "from": "medications",
+            "from": "Medications",
             "localField": "med_id",
             "foreignField": "_id",
             "as": "medication_details"
@@ -1126,12 +1138,24 @@ def view_patient(patient_id, appt_id):
         }}
     ]))
 
-    # Convert prescription dates to string
+    # Format dates in prescriptions
     for prescription in past_prescriptions:
-        if 'date' in prescription and isinstance(prescription['date'], datetime):
-            prescription['date'] = prescription['date'].strftime('%Y-%m-%d')
+        if 'date' in prescription:
+            if isinstance(prescription['date'], datetime):
+                prescription['date'] = prescription['date'].strftime('%Y-%m-%d')
+            elif isinstance(prescription['date'], str):
+                try:
+                    # Try to parse the string date and format it
+                    date_obj = datetime.strptime(prescription['date'], '%Y-%m-%d')
+                    prescription['date'] = date_obj.strftime('%Y-%m-%d')
+                except ValueError:
+                    prescription['date'] = prescription['date']  # Keep original string if parsing fails
 
-    return render_template('view_patient.html', patient=patient_info, history=patient_history, prescriptions=past_prescriptions, appt_id=appt_id)
+    return render_template('view_patient.html', 
+                         patient=patient_info, 
+                         history=patient_history, 
+                         prescriptions=past_prescriptions, 
+                         appt_id=appt_id)
 
 
 # Fetch medications route

@@ -1,25 +1,28 @@
 {% extends 'base.html' %}
-
 {% block content %}
+
 <h1>Patient Information</h1>
 
 {% if patient %}
-    <h2>{{ patient['PatientName'] }}</h2> 
+    <h2>{{ patient['PatientName'] }}</h2>
     <h3>Appointment ID: {{ appt_id }}</h3>
+
     <form method="POST">
         <div class="mb-3">
             <label for="diagnosis">Diagnosis:</label>
-            <textarea name="diagnosis" id="diagnosis" class="form-control w-50" rows="5" required></textarea>
+            <input type="text" class="form-control" id="diagnosis" name="diagnosis" required>
         </div>
+
         <div class="mb-3">
             <label for="notes">Notes:</label>
-            <textarea name="notes" id="notes" class="form-control w-50" rows="5" required></textarea>
+            <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
         </div>
+
         <button type="submit" class="btn btn-primary">Save</button>
     </form>
 
     <h3>Past Diagnoses</h3>
-    <table class="table table-striped">
+    <table class="table">
         <thead>
             <tr>
                 <th>Date</th>
@@ -30,35 +33,36 @@
         <tbody>
             {% for record in history %}
             <tr>
-                <td>{{ record['date'].strftime('%Y-%m-%d') if record['date'] else 'N/A' }}</td> <!-- Date -->
-                <td>{{ record['diagnosis'] }}</td> <!-- Diagnosis -->
-                <td>{{ record['notes'] }}</td> <!-- Notes -->
+                <td>{{ record['date'] if record['date'] else 'N/A' }}</td>
+                <td>{{ record['diagnosis'] }}</td>
+                <td>{{ record['notes'] }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
     <h3>Prescribe Medication</h3>
-    <form id="prescription_form" method="POST">
+    <form method="POST">
         <div class="mb-3">
             <label for="medication">Medication:</label>
-            <input type="text" name="medication" id="medication" onkeyup="fetchMedications()" required class="form-control w-50">
-            <ul id="medication_list" class="dropdown-list"></ul>
+            <input type="text" class="form-control" id="medication" name="medication" required>
         </div>
+
         <div class="mb-3">
             <label for="duration">Quantity:</label>
-            <input type="number" name="duration" id="duration" required class="form-control w-50">
+            <input type="number" class="form-control" id="duration" name="duration" required>
         </div>
+
         <div class="mb-3">
-            <label for="notes">Medication Instructions:</label>
-            <textarea name="notes" id="notes" class="form-control w-50" rows="5"></textarea>
+            <label for="med_notes">Medication Instructions:</label>
+            <textarea class="form-control" id="med_notes" name="notes" rows="3"></textarea>
         </div>
-        <input type="hidden" name="appt_id" value="{{ appt_id }}">
+
         <button type="submit" class="btn btn-primary">Prescribe</button>
     </form>
 
     <h3>Past Prescriptions</h3>
-    <table class="table table-striped">
+    <table class="table">
         <thead>
             <tr>
                 <th>Prescription ID</th>
@@ -71,75 +75,22 @@
         <tbody>
             {% for prescription in prescriptions %}
             <tr>
-                <td>{{ prescription['prescription_id'] }}</td> <!-- Prescription ID -->
-                <td>{{ prescription['medication_name'] }}</td> <!-- Medication Name -->
-                <td>{{ prescription['dosage'] }}</td> <!-- Dosage -->
-                <td>{{ prescription['notes'] }}</td> <!-- Notes -->
-                <td>{{ prescription['date'].strftime('%Y-%m-%d') if prescription['date'] else 'N/A' }}</td> <!-- Date -->
+                <td>{{ prescription['prescription_id'] }}</td>
+                <td>{{ prescription['medication_name'] }}</td>
+                <td>{{ prescription['dosage'] }}</td>
+                <td>{{ prescription['notes'] }}</td>
+                <td>{{ prescription['date'] if prescription['date'] else 'N/A' }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <form method="POST" action="{{ url_for('staff.complete_appointment', appt_id=appt_id) }}">
-        <input type="hidden" name="patient_id" value="{{ patient['_id'] }}">
+    <form action="{{ url_for('staff.complete_appointment', appt_id=appt_id) }}" method="POST">
         <button type="submit" class="btn btn-success">Complete Appointment</button>
     </form>
 
-    <script>
-        // This script is to display the dropdown list of meds based on user input
-        async function fetchMedications() {
-            const input = document.getElementById('medication').value;
-
-            // Fetching the medication list based on input
-            const response = await fetch(`/fetch_medications?query=${input}`);
-            const medications = await response.json();
-
-            // Clear the dropdown list
-            const medicationList = document.getElementById('medication_list');
-            medicationList.innerHTML = '';
-
-            // Populate the dropdown list
-            medications.forEach(med => {
-                const li = document.createElement('li');
-                li.textContent = `${med.name} (${med.form}, ${med.dosage})`; // Formatting the display text
-                li.onclick = function () {
-                    const inputField = document.getElementById('medication');
-                    inputField.value = li.textContent; // Set input value to the dropdown item's text
-                    medicationList.innerHTML = ''; // Clear the dropdown list
-                    inputField.focus(); // Focus back on the input field
-                };
-                medicationList.appendChild(li);
-            });
-        }
-
-        // Hide the flash message after 3 seconds
-        setTimeout(function () {
-            const flashMessage = document.getElementById('flash-message');
-            if (flashMessage) {
-                flashMessage.style.display = 'none';
-            }
-        }, 3000);  // 3000 ms = 3 seconds
-    </script>
-
-    <!-- Additional styling -->
-    <style>
-        .dropdown-list {
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            list-style-type: none;
-        }
-
-        .dropdown-list li {
-            padding: 8px;
-            cursor: pointer;
-        }
-
-        .dropdown-list li:hover {
-            background-color: #f0f0f0;
-        }
-    </style>
 {% else %}
-    <p>Patient not found.</p>
+    <div class="alert alert-danger">Patient not found.</div>
 {% endif %}
+
 {% endblock %}

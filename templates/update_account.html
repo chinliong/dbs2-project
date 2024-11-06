@@ -1,11 +1,5 @@
 {% extends 'base.html' %}
-
-{% block styles %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/update_account.css') }}">
-{% endblock %}
-
 {% block content %}
-<!-- Display Flash Messages -->
 {% with messages = get_flashed_messages(with_categories=True) %}
     {% if messages %}
         {% for category, message in messages %}
@@ -15,95 +9,83 @@
         {% endfor %}
     {% endif %}
 {% endwith %}
+
 <h1>Update Particulars</h1>
-<form action="{{ url_for('patient.update_account') }}" method="post">
-    <div class="row">
-        <div class="col-md-6">
+
+<div class="row">
+    <div class="col-md-6">
+        {% if not is_staff %}
             <div class="col-nric-name">
                 <div id="col-nric">
-                    <label for="nric" class="form-label">NRIC</label>
-                    <p id="nric_msg" class="text-danger d-none">Please inform the staff to update personal particulars.</p>
-                    <input type="text" class="form-control" id="nric" value="{{ patient.get('NRIC', '') }}" readonly onclick="showMessage('nric_msg')">
+                    <label>NRIC</label>
+                    <input type="text" class="form-control" value="{{ patient.get('NRIC', '') if patient else '' }}" disabled>
+                    <small class="text-muted">Please inform the staff to update personal particulars.</small>
                 </div>
+
                 <div id="col-name">
-                    <label for="patient_name" class="form-label">Name</label>
-                    <p id="patient_name_msg" class="text-danger d-none">Please inform the staff to update personal particulars.</p>
-                    <input type="text" class="form-control" id="patient_name" value="{{ patient.get('PatientName', '') }}" readonly onclick="showMessage('patient_name_msg')">
+                    <label>Name</label>
+                    <input type="text" class="form-control" value="{{ patient.get('PatientName', '') if patient else '' }}" disabled>
+                    <small class="text-muted">Please inform the staff to update personal particulars.</small>
                 </div>
             </div>
-            
+        {% endif %}
+
+        <form method="POST">
             <div class="mb-3">
-                <label for="username" class="form-label">Username</label>
-                <input type="text" class="form-control" id="username" name="username" value="{{ user.get('Username', '') }}" required>
+                <label>Username</label>
+                <input type="text" class="form-control" name="username" value="{{ user.get('Username', '') }}" required>
             </div>
-            
+
             <div class="mb-3">
-                <label for="email" class="form-label">Email</label>
-                <input type="email" class="form-control" id="email" name="email" value="{{ user.get('Email', '') }}" required>
+                <label>Email</label>
+                <input type="email" class="form-control" name="email" value="{{ user.get('Email', '') }}" required>
             </div>
-            
+
             <div class="mb-3 mb-password">
-                <label for="password" class="form-label">Password</label>
-                <input type="password" class="form-control" id="password" name="password" placeholder="Leave blank if no change">
+                <label>Password</label>
+                <input type="password" class="form-control" name="password" placeholder="Leave blank to keep current password">
             </div>
+    </div>
+
+    <div class="col-md-6">
+        {% if not is_staff %}
+            <div class="mb-3">
+                <label>Date of Birth</label>
+                <input type="date" class="form-control" value="{{ patient.get('PatientDOB', '') if patient else '' }}" disabled>
+                <small class="text-muted">Please inform the staff to update personal particulars.</small>
+            </div>
+
+            <div class="mb-3">
+                <label>Gender</label>
+                <input type="text" class="form-control" value="{{ patient.get('PatientGender', '') if patient else '' }}" disabled>
+                <small class="text-muted">Please inform the staff to update personal particulars.</small>
+            </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label>Address</label>
+            <input type="text" class="form-control" name="address" value="{{ user.get('Address', '') }}">
         </div>
 
-        <div class="col-md-6">
-            <div class="mb-3">
-                <label for="dob" class="form-label">Date of Birth</label>
-                <p id="dob_msg" class="text-danger d-none">Please inform the staff to update personal particulars.</p>
-                <input type="date" class="form-control" id="dob" value="{{ patient.get('PatientDOB', '') }}" readonly onclick="showMessage('dob_msg')">
-            </div>
-            
-            <div class="mb-3">
-                <label for="gender" class="form-label">Gender</label>
-                <p id="gender_msg" class="text-danger d-none">Please inform the staff to update personal particulars.</p>
-                <input type="text" class="form-control" id="gender" value="{{ patient.get('PatientGender', '') }}" readonly onclick="showMessage('gender_msg')">
-            </div>
-            
-            <div class="mb-3">
-                <label for="address" class="form-label">Address</label>
-                <input type="text" class="form-control" id="address" name="address" value="{{ user.get('Address', '') }}" pattern=".*\d{6}.*" title="Address must contain a 6-digit Singapore postal code." required>
-            </div>
-            
-            <div id="contact" class="mb-3">
-                <label for="contact_number" class="form-label">Contact Number</label>
-                <div class="input-group">
-                    <span class="input-group-text">+65</span>
-                    <input type="text" class="form-control" id="contact_number" name="contact_number" value="{{ user.get('ContactNumber', '') }}" pattern="^[689]\d{7}$" title="Phone number must start with 6, 8, or 9 and contain 8 digits." required>
-                </div>
+        <div id="contact" class="mb-3">
+            <label>Contact Number</label>
+            <div class="input-group">
+                <span class="input-group-text">+65</span>
+                <input type="text" class="form-control" name="contact_number" value="{{ user.get('ContactNumber', '') }}">
             </div>
         </div>
     </div>
+</div>
 
-    <div class="form-buttons">
-        <button type="submit" class="btn btn-primary">Update Account</button>
-    </div>
+<div class="form-buttons">
+    <button type="submit" class="btn btn-primary">Update Account</button>
+</div>
 </form>
 
-<!-- Separate Delete Account Form -->
 <div class="form-buttons mt-3">
-    <form action="/delete_account" method="post" onsubmit="return confirm('Are you sure you want to delete your account? This action cannot be undone.');" class="form-inline">
-        <button type="submit" id="deleteAccount" class="btn btn-danger">Delete Account</button>
+    <form action="{{ url_for('auth.delete_account') }}" method="POST" onsubmit="return confirm('Are you sure you want to delete your account? This action cannot be undone.');">
+        <button type="submit" class="btn btn-danger">Delete Account</button>
     </form>
 </div>
 
-<script>
-    // Hide the flash message after 3 seconds
-    setTimeout(function() {
-        const flashMessage = document.getElementById('flash-message');
-        if (flashMessage) {
-            flashMessage.style.display = 'none';
-        }
-    }, 3000);  // 3000 ms = 3 seconds
-
-    // JavaScript to show the message when the read-only fields are clicked
-    function showMessage(id) {
-        const messageElement = document.getElementById(id);
-        messageElement.classList.remove('d-none');  // Show the message
-        setTimeout(function() {
-            messageElement.classList.add('d-none');  // Hide the message after 3 seconds
-        }, 3000);
-    }
-</script>
 {% endblock %}

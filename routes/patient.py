@@ -277,7 +277,7 @@ def update_account():
             flash('Email is already in use by another account.')
             return redirect(url_for('patient.update_account'))
 
-        # Fetch hashed password from DB
+        # Fetch current user to get existing password
         user = db.Users.find_one({"_id": ObjectId(session['user_id'])})
         existing_hashed_password = user['Password']
 
@@ -303,9 +303,13 @@ def update_account():
 
     # Fetch the current user's data
     user = db.Users.find_one({"_id": ObjectId(session['user_id'])})
-    patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
+    
+    # Only fetch patient data if user is not staff
+    patient = None
+    if not session.get('is_staff'):
+        patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
 
-    return render_template('update_account.html', user=user, patient=patient)
+    return render_template('update_account.html', user=user, patient=patient, is_staff=session.get('is_staff', 0))
 
 
 
