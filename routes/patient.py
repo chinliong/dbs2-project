@@ -218,6 +218,7 @@ from utils import is_valid_sg_address, is_valid_sg_phone
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 from bson.objectid import ObjectId
+from db_config import DatabaseManager
 
 # Patient Dashboard route
 @patient_bp.route('/patient_dashboard')
@@ -338,62 +339,62 @@ def book_appointment():
             flash('All fields are required.')
             return redirect(url_for('patient.book_appointment'))
 
-        # Validate date and time
         try:
             appt_date_obj = datetime.strptime(appt_date, '%Y-%m-%d').date()
             appt_time_obj = datetime.strptime(appt_time, '%H:%M').time()
 
-            # Ensure appointments are in 30-minute intervals
-            if appt_time_obj.minute not in [0, 30]: 
+            if appt_time_obj.minute not in [0, 30]:
                 flash('Appointments must be booked at 30-minute intervals.')
                 return redirect(url_for('patient.book_appointment'))
+                
+            if appt_date_obj < datetime.today().date():
+                flash('Appointment date must be in the future.')
+                return redirect(url_for('patient.book_appointment'))
+
+            if appt_date_obj < today or appt_date_obj > one_week_later:
+                flash('Appointments can only be booked within the next 7 days.')
+                return redirect(url_for('patient.book_appointment'))
+
         except ValueError:
             flash('Invalid date or time format.')
             return redirect(url_for('patient.book_appointment'))
 
-        # Validation for if patient books an invalid time for an appointment
-        if appt_date_obj < datetime.today().date():
-            flash('Appointment date must be in the future.')
+        try:
+            # Get database manager instance for atomic operations
+            db_manager = DatabaseManager()
+            db = db_manager.get_db()
+            
+            # Fetch PatientID
+            patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
+            if not patient:
+                flash('Patient record not found. Please contact support.')
+                return redirect(url_for('patient.patient_dashboard'))
+
+            # Convert date/time for MongoDB
+            appt_date_datetime = datetime.combine(appt_date_obj, datetime.min.time())
+            appt_time_str = appt_time_obj.strftime('%H:%M')
+
+            # Prepare appointment data
+            appointment_data = {
+                "patient_id": patient['_id'],
+                "appt_date": appt_date_datetime,
+                "appt_time": appt_time_str,
+                "appt_status": 'Pending',
+                "appt_reason": appt_reason
+            }
+
+            # Use atomic booking operation
+            if db_manager.atomic_book_appointment(appointment_data):
+                flash('Appointment booked successfully!', 'success')
+                return redirect(url_for('patient.patient_dashboard'))
+            else:
+                flash('This appointment slot is already taken. Please choose another time.')
+                return redirect(url_for('patient.book_appointment'))
+
+        except Exception as e:
+            flash(f'An error occurred while booking the appointment: {str(e)}', 'danger')
             return redirect(url_for('patient.book_appointment'))
 
-        # Validation for appointment date range
-        if appt_date_obj < today or appt_date_obj > one_week_later:
-            flash('Appointments can only be booked within the next 7 days.')
-            return redirect(url_for('patient.book_appointment'))
-
-        db = get_db_connection()
-
-        # Fetch PatientID
-        patient = db.Patients.find_one({"UserID": ObjectId(session['user_id'])})
-
-        if not patient:
-            flash('Patient record not found. Please contact support.')
-            return redirect(url_for('patient.patient_dashboard'))
-
-        patient_id = patient['_id']
-
-        # Convert `appt_time_obj` to a string to store in MongoDB
-        appt_date_datetime = datetime.combine(appt_date_obj, datetime.min.time())
-        appt_time_str = appt_time_obj.strftime('%H:%M')
-
-        # Check if the appointment slot is available
-        existing_appointment = db.Appointments.find_one({"appt_date": appt_date_datetime, "appt_time": appt_time_str})
-
-        if existing_appointment:
-            flash('This appointment slot is already taken. Please choose another time.')
-            return redirect(url_for('patient.book_appointment'))
-
-        # Insert the appointment into the Appointments collection
-        db.Appointments.insert_one({
-            "patient_id": patient_id,
-            "appt_date": appt_date_datetime,
-            "appt_time": appt_time_str,
-            "appt_status": 'Pending',
-            "appt_reason": appt_reason
-        })
-
-        flash('Appointment booked successfully!', 'success')
-        return redirect(url_for('patient.patient_dashboard'))
-
+    # For GET request, render the booking form
     return render_template('book_appointment.html', min_date=today, max_date=one_week_later)
 

@@ -3,6 +3,7 @@ from . import medication_bp
 from db import get_db_connection
 from datetime import datetime
 from bson.objectid import ObjectId, InvalidId
+from db_config import DatabaseManager
 
 def is_valid_objectid(oid):
     try:
@@ -58,31 +59,31 @@ def update_medication_quantity():
         flash('Invalid medication ID format.', 'danger')
         return redirect(url_for('medication.medications'))
 
-    db = get_db_connection()
-    medications_collection = db['Medications']
-    inventory_logs_collection = db['InventoryLogs']
-
-    # Fetch current quantity of the medication
-    medication = medications_collection.find_one({"_id": ObjectId(medication_id)})
-
+    db_manager = DatabaseManager()
+    db = db_manager.get_db()
+    
+    # Fetch current medication details
+    medication = db.Medications.find_one({"_id": ObjectId(medication_id)})
     if not medication:
         flash('Medication not found.', 'danger')
         return redirect(url_for('medication.medications'))
 
-    # Update the quantity in the DB
-    new_quantity = medication['quantity'] + quantity_change
-    medications_collection.update_one({"_id": ObjectId(medication_id)}, {"$set": {"quantity": new_quantity}})
-
-    # Add a tracking log to InventoryLogs collection based on the user input
-    change_type = 'addition' if quantity_change > 0 else 'subtract'
-    inventory_logs_collection.insert_one({
-        "MedID": ObjectId(medication_id),
-        "change_type": change_type,
-        "quantity_changed": quantity_change,
-        "date": datetime.now()
-    })
-
-    flash(f'Medication "{medication["name"]}" updated. New quantity: {new_quantity}', 'success')
+    # Use atomic update operation
+    success = db_manager.atomic_update_medication_quantity(ObjectId(medication_id), quantity_change)
+    
+    if success:
+        # Add inventory tracking log
+        db.InventoryLogs.insert_one({
+            "MedID": ObjectId(medication_id),
+            "change_type": 'addition' if quantity_change > 0 else 'subtract',
+            "quantity_changed": abs(quantity_change),
+            "date": datetime.now()
+        })
+        
+        new_quantity = medication['quantity'] + quantity_change
+        flash(f'Medication "{medication["name"]}" updated. New quantity: {new_quantity}', 'success')
+    else:
+        flash('Cannot update quantity. Insufficient stock or concurrent update in progress.', 'danger')
 
     return redirect(url_for('medication.medications'))
 

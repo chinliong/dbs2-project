@@ -706,6 +706,7 @@ from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 from bson import json_util
 import logging
+from db_config import DatabaseManager
 
 # Staff Dashboard route
 @staff_bp.route('/staff_dashboard', methods=['GET'])
@@ -1334,13 +1335,13 @@ def edit_appointment(appt_id):
     appointment = db.Appointments.find_one({"_id": ObjectId(appt_id)})
     return render_template('edit_appointment.html', appointment=appointment)
 
-# Book appointment route
 @staff_bp.route('/staff_book_appointment', methods=['GET', 'POST'])
 def staff_book_appointment():
     if 'user_id' not in session:
         flash('Please log in as staff to book an appointment.')
         return redirect(url_for('auth.login'))
 
+    # Get the current date and the date one week from now
     today = datetime.now().date()
     one_week_later = today + timedelta(days=7)
 
@@ -1350,53 +1351,64 @@ def staff_book_appointment():
         appt_time = request.form.get('appt_time')
         appt_reason = request.form.get('appt_reason')
 
-        if not nric or not appt_date or not appt_time or not appt_reason:
+        # Validation
+        if not all([nric, appt_date, appt_time, appt_reason]):
             flash('All fields are required.')
             return redirect(url_for('staff.staff_book_appointment'))
 
         try:
             appt_date_obj = datetime.strptime(appt_date, '%Y-%m-%d').date()
             appt_time_obj = datetime.strptime(appt_time, '%H:%M').time()
+            
             if appt_time_obj.minute not in [0, 30]:
                 flash('Appointments must be booked at 30-minute intervals.')
                 return redirect(url_for('staff.staff_book_appointment'))
+                
+            if appt_date_obj < today or appt_date_obj > one_week_later:
+                flash('Appointments can only be booked within the next 7 days.')
+                return redirect(url_for('staff.staff_book_appointment'))
+
         except ValueError:
             flash('Invalid date or time format.')
             return redirect(url_for('staff.staff_book_appointment'))
 
-        if appt_date_obj < today or appt_date_obj > one_week_later:
-            flash('Appointments can only be booked within the next 7 days.')
+        try:
+            # Get database manager instance for atomic operations
+            db_manager = DatabaseManager()
+            db = db_manager.get_db()
+
+            # Find the patient by NRIC
+            patient = db.Patients.find_one({"NRIC": nric})
+            if not patient:
+                flash('Patient NRIC not found. Please contact support.')
+                return redirect(url_for('staff.staff_book_appointment'))
+
+            # Convert date/time for MongoDB
+            appt_date_datetime = datetime.combine(appt_date_obj, datetime.min.time())
+            appt_time_str = appt_time_obj.strftime('%H:%M')
+
+            # Prepare appointment data
+            appointment_data = {
+                "patient_id": patient['_id'],
+                "appt_date": appt_date_datetime,
+                "appt_time": appt_time_str,
+                "appt_status": 'Pending',
+                "appt_reason": appt_reason
+            }
+
+            # Use atomic booking operation
+            if db_manager.atomic_book_appointment(appointment_data):
+                flash('Appointment booked successfully!', 'success')
+                return redirect(url_for('staff.staff_dashboard'))
+            else:
+                flash('This appointment slot is already taken. Please choose another time.')
+                return redirect(url_for('staff.staff_book_appointment'))
+
+        except Exception as e:
+            flash(f'An error occurred while booking the appointment: {str(e)}', 'danger')
             return redirect(url_for('staff.staff_book_appointment'))
 
-        db = get_db_connection()
-
-        patient = db.Patients.find_one({"nric": nric})
-        if not patient:
-            flash('Patient NRIC not found. Please contact support.')
-            return redirect(url_for('staff.staff_book_appointment'))
-
-        patient_id = patient['_id']
-
-        existing_appointment = db.Appointments.find_one({
-            "appt_date": appt_date_obj,
-            "appt_time": appt_time
-        })
-
-        if existing_appointment:
-            flash('This appointment slot is already taken. Please choose another time.')
-            return redirect(url_for('staff.staff_book_appointment'))
-
-        db.Appointments.insert_one({
-            "patient_id": patient_id,
-            "appt_date": appt_date_obj,
-            "appt_time": appt_time,
-            "appt_status": 'Pending',
-            "appt_reason": appt_reason
-        })
-
-        flash('Appointment booked successfully!', 'success')
-        return redirect(url_for('staff.staff_dashboard'))
-
+    # For GET request, render the booking form
     return render_template('staff_book_appointment.html', min_date=today, max_date=one_week_later)
 
 # Delete appointments route
