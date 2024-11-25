@@ -1200,6 +1200,45 @@ def advanced_search():
         },
         {
             '$unwind': '$user'
+        },
+        # Add PatientHistory lookup by default
+        {
+            '$lookup': {
+                'from': 'PatientHistory',
+                'let': { 'patient_id': '$_id' },
+                'pipeline': [
+                    {
+                        '$match': {
+                            '$expr': { '$eq': ['$patient_id', '$$patient_id'] }
+                        }
+                    },
+                    {
+                        '$sort': { 'date': -1 }
+                    },
+                    {
+                        '$limit': 1
+                    }
+                ],
+                'as': 'latest_history'
+            }
+        },
+        {
+            '$addFields': {
+                'latest_diagnosis': {
+                    '$cond': {
+                        'if': { '$gt': [{ '$size': '$latest_history' }, 0] },
+                        'then': { '$arrayElemAt': ['$latest_history.diagnosis', 0] },
+                        'else': 'No diagnosis'
+                    }
+                },
+                'diagnosis_date': {
+                    '$cond': {
+                        'if': { '$gt': [{ '$size': '$latest_history' }, 0] },
+                        'then': { '$arrayElemAt': ['$latest_history.date', 0] },
+                        'else': None
+                    }
+                }
+            }
         }
     ]
 
@@ -1222,6 +1261,7 @@ def advanced_search():
     diagnosis = request.form.get('diagnosis', '')
     diagnosis_date = request.form.get('diagnosis_date', '')
 
+    # Add filter conditions
     if username:
         match_conditions['user.Username'] = {'$regex': username, '$options': 'i'}
     if email:
@@ -1250,38 +1290,17 @@ def advanced_search():
             pass
     if dob:
         try:
-            dob_date = datetime.strptime(dob, '%Y-%m-%d')
-            match_conditions['PatientDOB'] = dob_date
+            match_conditions['PatientDOB'] = datetime.strptime(dob, '%Y-%m-%d')
         except ValueError:
             pass
-
-    # Add diagnosis lookup if needed
-    if diagnosis or diagnosis_date:
-        pipeline.extend([
-            {
-                '$lookup': {
-                    'from': 'PatientHistory',
-                    'localField': '_id',
-                    'foreignField': 'patient_id',
-                    'as': 'history'
-                }
-            },
-            {
-                '$unwind': {
-                    'path': '$history',
-                    'preserveNullAndEmptyArrays': True
-                }
-            }
-        ])
-
-        if diagnosis:
-            match_conditions['history.diagnosis'] = {'$regex': diagnosis, '$options': 'i'}
-        if diagnosis_date:
-            try:
-                diag_date = datetime.strptime(diagnosis_date, '%Y-%m-%d')
-                match_conditions['history.date'] = diag_date
-            except ValueError:
-                pass
+    if diagnosis:
+        match_conditions['latest_diagnosis'] = {'$regex': diagnosis, '$options': 'i'}
+    if diagnosis_date:
+        try:
+            diag_date = datetime.strptime(diagnosis_date, '%Y-%m-%d')
+            match_conditions['diagnosis_date'] = diag_date
+        except ValueError:
+            pass
 
     # Add match conditions to pipeline
     if match_conditions:
@@ -1295,16 +1314,27 @@ def advanced_search():
             # Convert ObjectId to string
             patient['_id'] = str(patient['_id'])
             patient['UserID'] = str(patient['UserID'])
+            
             # Convert user ObjectId
             if 'user' in patient:
                 patient['user']['_id'] = str(patient['user']['_id'])
             
             # Format dates
             if 'PatientDOB' in patient and patient['PatientDOB']:
-                patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
-            if 'history' in patient and patient['history'].get('date'):
-                patient['diagnosis_date'] = patient['history']['date'].strftime('%Y-%m-%d')
-                patient['latest_diagnosis'] = patient['history'].get('diagnosis')
+                if isinstance(patient['PatientDOB'], datetime):
+                    patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
+                    
+            if 'diagnosis_date' in patient and patient['diagnosis_date']:
+                if isinstance(patient['diagnosis_date'], datetime):
+                    patient['diagnosis_date'] = patient['diagnosis_date'].strftime('%Y-%m-%d')
+                else:
+                    patient['diagnosis_date'] = 'N/A'
+            else:
+                patient['diagnosis_date'] = 'N/A'
+
+            # Clean up the temporary latest_history field
+            if 'latest_history' in patient:
+                del patient['latest_history']
 
         return json_util.dumps(patients)
     except Exception as e:
