@@ -97,21 +97,21 @@
                     <div class="row mb-3">
                         <div class="col-md-4">
                             <label for="diagnosis_{{ loop.index }}" class="font-weight-bold">Diagnosis:</label>
-                            <input type="text" class="form-control" id="diagnosis_{{ loop.index }}" name="diagnosis_text" value="{{ diagnosis.get('diagnosis', '') }}" required>
+                            <input type="text" class="form-control" id="diagnosis_{{ loop.index }}" name="diagnosis_text_{{ loop.index }}" value="{{ diagnosis.get('diagnosis', '') }}" required>
                         </div>
                         <div class="col-md-8">
                             <label for="notes_{{ loop.index }}" class="font-weight-bold">Notes:</label>
-                            <textarea class="form-control" id="notes_{{ loop.index }}" name="diagnosis_notes" rows="2" placeholder="Additional notes...">{{ diagnosis.get('notes', '') }}</textarea>
+                            <textarea class="form-control" id="notes_{{ loop.index }}" name="diagnosis_notes_{{ loop.index }}" rows="2" placeholder="Additional notes...">{{ diagnosis.get('notes', '') }}</textarea>
                         </div>
                     </div>
 
                     <div class="row mb-3">
                         <div class="col-md-4">
                             <label for="date_{{ loop.index }}" class="font-weight-bold">Diagnosis Date:</label>
-                            <input type="date" class="form-control" id="date_{{ loop.index }}" name="diagnosis_date" value="{{ diagnosis.get('date', '') }}" required>
+                            <input type="date" class="form-control" id="date_{{ loop.index }}" name="diagnosis_date_{{ loop.index }}" value="{{ diagnosis.get('date', '') }}" required>
                         </div>
-                        <input type="hidden" name="diagnosis_id" value="{{ diagnosis.get('HistoryID', '') }}"> <!-- Hidden input for HistoryID -->
-                        <input type="hidden" name="appt_id" value="{{ diagnosis.get('ApptID', '') }}">
+                        
+                        <input type="hidden" name="appt_id_{{ loop.index }}" value="{{ diagnosis.get('appt_id', '') }}">
                     </div>
                 </div>
             </div>
@@ -120,7 +120,7 @@
     {% else %}
         <p class="text-muted">No past diagnoses found for this patient.</p>
     {% endif %}
-  </div>
+</div>
 
   <button type="submit" class="btn btn-primary mt-4">Update Patient Details</button>
 </form>

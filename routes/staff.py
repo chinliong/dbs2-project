@@ -863,6 +863,10 @@ def edit_patient(patient_id):
     if not user:
         flash('User not found for the given patient.', 'danger')
         return redirect(url_for('staff.staff_dashboard'))
+    
+    # If PatientDOB exists, format it to YYYY-MM-DD
+    if patient.get('PatientDOB'):
+        patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
 
     if request.method == 'POST':
         # Retrieve form data
@@ -879,11 +883,19 @@ def edit_patient(patient_id):
         password = request.form.get('password')
 
         # Handle past diagnosis update or add
-        diagnosis_id = request.form.getlist('diagnosis_id')
-        diagnosis_text = request.form.getlist('diagnosis_text')
-        diagnosis_date = request.form.getlist('diagnosis_date')
-        diagnosis_notes = request.form.getlist('diagnosis_notes')
-        appt_id = request.form.getlist('appt_id')
+        diagnosis_text = []
+        diagnosis_date = []
+        diagnosis_notes = []
+        appt_id = []
+
+        # Collect the diagnosis form data using dynamic field names
+        idx = 1
+        while f"diagnosis_text_{idx}" in request.form:
+            diagnosis_text.append(request.form[f"diagnosis_text_{idx}"])
+            diagnosis_date.append(request.form[f"diagnosis_date_{idx}"])
+            diagnosis_notes.append(request.form[f"diagnosis_notes_{idx}"])
+            appt_id.append(request.form[f"appt_id_{idx}"])
+            idx += 1
 
         # Validations
         if not is_valid_nric(nric):
@@ -943,22 +955,45 @@ def edit_patient(patient_id):
                 user_update["Password"] = generate_password_hash(password, method='pbkdf2:sha256')
             db.Users.update_one({"_id": ObjectId(patient['UserID'])}, {"$set": user_update})
 
-            # Handle diagnosis updates and inserts
-            for idx, diag_id in enumerate(diagnosis_id):
+           # Handle diagnosis updates and inserts
+            for idx, appt in enumerate(appt_id):
+                # Convert appt_id to ObjectId if it's a valid string
+                try:
+                    appt_object_id = ObjectId(appt)  # This will raise an error if appt is not a valid ObjectId string
+                except Exception as e:
+                    logging.error(f"Invalid appt_id: {appt}, Error: {str(e)}")
+                    flash(f"Invalid appointment ID: {appt}", 'danger')
+                    return redirect(url_for('staff.staff_dashboard'))
+
                 diagnosis_data = {
                     "diagnosis": diagnosis_text[idx],
                     "date": datetime.strptime(diagnosis_date[idx], '%Y-%m-%d'),
                     "notes": diagnosis_notes[idx],
-                    "ApptID": appt_id[idx]
+                    "appt_id": appt_object_id  # Store as ObjectId
                 }
-                if diag_id:
-                    db.PatientHistory.update_one({"_id": ObjectId(diag_id), "PatientID": ObjectId(patient_id)}, {"$set": diagnosis_data})
+
+                # Check if diagnosis already exists in PatientHistory for the given patient and appt_id
+                existing_diagnosis = db.PatientHistory.find_one({
+                    "patient_id": ObjectId(patient_id),  # Make sure patient_id is ObjectId
+                    "appt_id": appt_object_id  # Compare with ObjectId in the query
+                })
+
+                if existing_diagnosis:
+                    # If the diagnosis already exists, update it
+                    db.PatientHistory.update_one(
+                        {"_id": existing_diagnosis["_id"]},
+                        {"$set": diagnosis_data}
+                    )
+                else:
+                    # If the diagnosis doesn't exist, insert a new record
+                    diagnosis_data["patient_id"] = ObjectId(patient_id)  # Ensure patient_id is an ObjectId
+                    db.PatientHistory.insert_one(diagnosis_data)
 
             flash('Patient details and diagnoses updated successfully!', 'success')
             return redirect(url_for('staff.staff_dashboard'))
 
     # Fetch patient diagnoses
-    patient_diagnoses = list(db.PatientHistory.find({"PatientID": ObjectId(patient_id)}).sort("date", -1))
+    patient_diagnoses = list(db.PatientHistory.find({"patient_id": ObjectId(patient_id)}).sort("date", -1))
 
     # Format diagnosis date
     for diag in patient_diagnoses:
