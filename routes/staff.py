@@ -1497,3 +1497,23 @@ def complete_appointment(appt_id):
         flash('Error completing the appointment: {}'.format(str(e)), 'danger')
 
     return redirect(url_for('staff.manage_appointment'))
+
+@staff_bp.route('/search_medications')
+def search_medications():
+    query = request.args.get('query', '').strip()
+
+    if not query:
+        return jsonify([])  # Return empty if no query is provided
+
+    db = get_db_connection()
+    medications_collection = db['Medications']
+
+    # Perform a case-insensitive search using regex and limit to 8 results
+    medications = list(medications_collection.find({
+        "name": {"$regex": query, "$options": "i"}
+    }).limit(20))  # Adjust limit as necessary
+
+    # Only return the name field for each medication
+    results = [{"name": medication['name']} for medication in medications]
+
+    return jsonify(results)

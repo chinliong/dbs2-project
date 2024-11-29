@@ -45,7 +45,10 @@
     <form method="POST">
         <div class="mb-3">
             <label for="medication">Medication:</label>
-            <input type="text" class="form-control" id="medication" name="medication" required>
+            <input type="text" class="form-control" id="medication" name="medication" oninput="fetchSearchResults()" required>
+            <ul id="searchResults" class="list-group" style="display: none; position: absolute; z-index: 10; width: 100%; max-width: calc(100% - 10px); 
+                left: 0; max-height: 200px; overflow-y: auto; background-color: white; border: 1px solid #ccc;">
+            </ul>
         </div>
 
         <div class="mb-3">
@@ -88,6 +91,49 @@
     <form action="{{ url_for('staff.complete_appointment', appt_id=appt_id) }}" method="POST">
         <button type="submit" class="btn btn-success">Complete Appointment</button>
     </form>
+
+<script>
+    function fetchSearchResults() {
+            var query = document.getElementById("medication").value;  // Get the search input value
+            var resultsContainer = document.getElementById("searchResults");  // Get the dropdown element
+
+            // Hide the dropdown if input is less than 2 characters (optional)
+            if (query.length < 2) {
+                resultsContainer.style.display = "none";  // Hide the dropdown if query is too short
+                return;
+            }
+
+            // Make AJAX request to fetch search results from the backend
+            fetch(`/search_medications?query=${query}`)
+                .then(response => response.json())  // Parse the JSON response
+                .then(data => {
+                    // Clear previous results
+                    resultsContainer.innerHTML = '';
+
+                    // If there are results, display them in the dropdown
+                    if (data.length > 0) {
+                        resultsContainer.style.display = "block";  // Show the dropdown
+                        data.forEach(medication => {
+                            // Create a new list item for each medication result
+                            let listItem = document.createElement("li");
+                            listItem.classList.add("list-group-item");
+                            listItem.textContent = medication.name;  // Set the text of the list item to the medication name
+                            listItem.onclick = function () {
+                                // Set the input field to the selected medication name
+                                document.getElementById("medication").value = medication.name;
+                                resultsContainer.style.display = "none";  // Hide the dropdown on selection
+                            };
+                            resultsContainer.appendChild(listItem);  // Append the list item to the dropdown
+                        });
+                    } else {
+                        resultsContainer.style.display = "none";  // Hide the dropdown if no results
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching search results:", error);
+                });
+        }
+</script>
 
 {% else %}
     <div class="alert alert-danger">Patient not found.</div>
