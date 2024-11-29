@@ -11,11 +11,9 @@
         <h1>List of Medications</h1>
 
         <!-- Search Form -->
-        <form method="GET" action="/medications" class="mb-3">
+        <form id="searchForm" method="GET" action="/medications" class="mb-3" onsubmit="handleSearchSubmit(event)">
             <div class="input-group" style="position: relative;">
                 <input type="text" id="searchInput" class="form-control" name="search" placeholder="Search by medication name" value="{{ search or '' }}" oninput="fetchSearchResults()">
-
-                <!-- <input type="text" id="searchInput" class="form-control" name="search" placeholder="Search by medication name" oninput="fetchSearchResults()"> -->
                 <button class="btn btn-primary" type="submit">Search</button>
             </div>
         </form>
@@ -270,6 +268,16 @@
         .catch(error => {
             console.error("Error fetching search results:", error);
         });
+}
+
+function handleSearchSubmit(event) {
+    var searchInput = document.getElementById("searchInput").value.trim();
+    
+    if (!searchInput) {
+        // If the search input is empty, modify the action to submit to "/medications" without query params
+        event.preventDefault();  // Prevent the form from submitting the usual way
+        window.location.href = "/medications";  // Redirect to the clean URL without search query
+    }
 }
 
 </script>
