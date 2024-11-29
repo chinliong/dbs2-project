@@ -11,10 +11,11 @@
 
 .pagination {
     display: flex; 
-    justify-content: space-between;
+    justify-content: left;
     align-items: center;
-    width: 100%;
+    width: auto;
     margin-top: 20px;
+    padding: 12px 0;
     overflow-y: auto;
 }
 
@@ -22,6 +23,10 @@
     border-radius: 50%; 
     padding: 10px 15px; 
     margin: 0 5px; 
+    width: 46px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .pagination .page-item.active .page-link {
@@ -31,7 +36,6 @@
 }
 
 .pagination .page-item {
-    width: 90vw;
     display: inline-block; 
 }
 
@@ -46,12 +50,14 @@
 .modal {
     display: none; 
     position: fixed; 
-    z-index: 1; 
+    z-index: 3;
     left: 0;
     top: 0;
-    width: 100%; 
+    width: 100%;
     height: 100%; 
     background-color: rgba(0,0,0,0.4); 
+    justify-content: center;
+    align-items: center;
 }
 
 .modal-content {
@@ -60,6 +66,7 @@
     padding: 20px;
     border: 1px solid #888;
     width: 80%;
+    height: fit-content;
 }
 
 .close {

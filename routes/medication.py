@@ -23,9 +23,9 @@ def medications():
 
     search_query = request.args.get('search')
 
-    # Get the current page (default to 1) and set number of medications per page
+    # Get the current page (default to 1) and set number of medications per page for table
     page = request.args.get('page', 1, type=int)
-    per_page = 10
+    per_page = 100  # Limit the number of items displayed per page for table
     
     # Build the query for medications
     if search_query:
@@ -35,7 +35,7 @@ def medications():
 
     total_medications = medications_collection.count_documents(query)
 
-    # Calculate total number of pages
+    # Calculate total number of pages for pagination
     total_pages = (total_medications // per_page) + (1 if total_medications % per_page > 0 else 0)
 
     # Ensure the page number is within valid bounds
@@ -44,7 +44,7 @@ def medications():
     elif page > total_pages and total_pages > 0:
         page = total_pages
 
-    # Fetch the medications for the current page
+    # Fetch the medications for the current page, limited by per_page (pagination applied here)
     medications = list(medications_collection.find(query).sort("name", 1).skip((page - 1) * per_page).limit(per_page))
 
     return render_template('medications.html', medications=medications, page=page, total_pages=total_pages, search=search_query)
@@ -62,7 +62,7 @@ def search_medications():
     # Perform a case-insensitive search using regex and limit to 8 results
     medications = list(medications_collection.find({
         "name": {"$regex": query, "$options": "i"}
-    }).limit(8))
+    }).limit(20))  # Adjust limit as necessary
 
     # Only return the name field for each medication
     results = [{"name": medication['name']} for medication in medications]
