@@ -12,6 +12,27 @@ def is_valid_objectid(oid):
     except InvalidId:
         return False
 
+# @medication_bp.route('/medications')
+# def medications():
+#     if not session.get('is_staff') == 1:
+#         flash("You do not have permission to access the Medication List.")
+#         return redirect(url_for('patient.patient_dashboard'))
+
+#     db = get_db_connection()
+#     medications_collection = db['Medications']
+
+#     # Get the search query from the URL parameters (GET request)
+#     search_query = request.args.get('search')
+
+#     if search_query:
+#         # Filter medications by name using a case-insensitive regex
+#         medications = list(medications_collection.find({"name": {"$regex": search_query, "$options": "i"}}).sort("name", 1))
+#     else:
+#         # Fetch all medications sorted ASC by name
+#         medications = list(medications_collection.find().sort("name", 1))
+
+#     return render_template('medications.html', medications=medications)
+
 @medication_bp.route('/medications')
 def medications():
     if not session.get('is_staff') == 1:
@@ -24,14 +45,35 @@ def medications():
     # Get the search query from the URL parameters (GET request)
     search_query = request.args.get('search')
 
-    if search_query:
-        # Filter medications by name using a case-insensitive regex
-        medications = list(medications_collection.find({"name": {"$regex": search_query, "$options": "i"}}).sort("name", 1))
-    else:
-        # Fetch all medications sorted ASC by name
-        medications = list(medications_collection.find().sort("name", 1))
+    # Get the current page (default to 1)
+    page = request.args.get('page', 1, type=int)
 
-    return render_template('medications.html', medications=medications)
+    # Set the number of medications per page
+    per_page = 10
+    
+    # Build the query for medications (with optional search)
+    if search_query:
+        query = {"name": {"$regex": search_query, "$options": "i"}}
+    else:
+        query = {}
+
+    # Get the total count of medications for pagination
+    total_medications = medications_collection.count_documents(query)
+
+    # Calculate total number of pages
+    total_pages = (total_medications // per_page) + (1 if total_medications % per_page > 0 else 0)
+
+    # Ensure the page number is within valid bounds
+    if page < 1:
+        page = 1
+    elif page > total_pages and total_pages > 0:
+        page = total_pages
+
+    # Fetch the medications for the current page
+    medications = list(medications_collection.find(query).sort("name", 1).skip((page - 1) * per_page).limit(per_page))
+
+    # Render the template with medications and pagination info
+    return render_template('medications.html', medications=medications, page=page, total_pages=total_pages, search=search_query)
 
 # Medication quantity updates route
 @medication_bp.route('/update_medication_quantity', methods=['POST'])

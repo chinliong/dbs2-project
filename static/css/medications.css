@@ -1,3 +1,48 @@
+.container-fluid {
+    padding-right: 56px;
+    padding-left: 56px;
+}
+
+.table-responsive {
+    height: calc(100vh - 350px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pagination {
+    display: flex; 
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-top: 20px;
+    overflow-y: auto;
+}
+
+.pagination .page-item .page-link {
+    border-radius: 50%; 
+    padding: 10px 15px; 
+    margin: 0 5px; 
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #007bff;
+    color: white; 
+    border-color: #007bff; 
+}
+
+.pagination .page-item {
+    width: 90vw;
+    display: inline-block; 
+}
+
+.pagination .page-item:first-child {
+    margin-left: 0; 
+}
+
+.pagination .page-item:last-child {
+    margin-right: 0; 
+}
+
 .modal {
     display: none; 
     position: fixed; 
