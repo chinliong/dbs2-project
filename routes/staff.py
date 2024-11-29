@@ -496,28 +496,6 @@ def view_patient(patient_id, appt_id):
                          prescriptions=past_prescriptions, 
                          appt_id=appt_id)
 
-
-# Fetch medications route
-@staff_bp.route('/fetch_medications')
-def fetch_medications():
-    query = request.args.get('query', '')
-    db = get_db_connection()
-
-    # Fetch medications that match the user's input
-    medications = list(db.Medications.find({"name": {"$regex": query, "$options": "i"}}))
-
-    # Prepare response data based on columns in med table
-    medication_list = [
-        {
-            'name': med['name'],
-            'form': med['form'],
-            'dosage': med['dosage']
-        }
-        for med in medications
-    ]
-
-    return jsonify(medication_list)
-
 # Advanced search routes
 # Search feature for staff only using different parameters to find patients
 @staff_bp.route('/advanced_search', methods=['POST'])
