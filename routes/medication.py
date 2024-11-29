@@ -1,3 +1,6 @@
+# This file contains the blueprint components for medications.
+# It includes the function to manage medications.
+
 from flask import render_template, request, redirect, session, url_for, flash, jsonify
 from . import medication_bp
 from db import get_db_connection

@@ -1,3 +1,7 @@
+# This file creates the initial document into the [Users] collection.
+# It is the only account that has the staff view.
+# This file was used in the inital setup of the DB. It is no longer in use.
+
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash
 import certifi
@@ -10,7 +14,7 @@ db = client["clinicDB"]
 new_staff_user = {
     "username": "staff",
     "email": "staff@gmail.com",
-    "password": generate_password_hash("staff"),  # Replace with actual hashed password
+    "password": generate_password_hash("staff"),
     "address": "18 Tai Seng St, #01-07/08, Singapore 539775",
     "contact_number": "62453537",
     "is_staff": 1  # Set to 1 to make this user a staff member

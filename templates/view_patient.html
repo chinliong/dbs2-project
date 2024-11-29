@@ -93,11 +93,13 @@
     </form>
 
 <script>
+    // This function fetches the name of the medication based on staff input
+    // It displays via a dropdown list
     function fetchSearchResults() {
             var query = document.getElementById("medication").value;  // Get the search input value
             var resultsContainer = document.getElementById("searchResults");  // Get the dropdown element
 
-            // Hide the dropdown if input is less than 2 characters (optional)
+            // Hide the dropdown if input is less than 2 characters
             if (query.length < 2) {
                 resultsContainer.style.display = "none";  // Hide the dropdown if query is too short
                 return;

@@ -1,9 +1,12 @@
+# app.py (main)
+# To run the flask app, simply click on the Run button located top right (VS Code).
+
 from flask import Flask, redirect, session, url_for
 from config import Config
 from routes import auth_bp, staff_bp, patient_bp, medication_bp
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # DO not touch this, this is the key that was set up with DB
+app.secret_key = 'your_secret_key'  # Do NOT touch this, this is the key that was set up with DB
 app.config.from_object(Config)
 app.register_blueprint(auth_bp)
 app.register_blueprint(staff_bp)

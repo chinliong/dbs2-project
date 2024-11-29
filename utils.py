@@ -1,3 +1,5 @@
+# Utility file for checking if address, phone no. and NRIC is correct.
+
 import re
 
 # Validation functions

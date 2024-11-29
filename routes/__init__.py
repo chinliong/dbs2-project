@@ -1,4 +1,6 @@
 # routes/__init__.py
+# This file is used to initialise the blueprints.
+# DO NOT TOUCH.
 
 from flask import Blueprint
 
