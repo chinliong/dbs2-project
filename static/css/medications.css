@@ -30,3 +30,21 @@
     text-decoration: none;
     cursor: pointer;
 }
+
+#searchResults {
+    position: absolute;
+    z-index: 10;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: white;
+    border: 1px solid #ccc;
+}
+
+#searchResults li {
+    cursor: pointer;
+}
+
+#searchResults li:hover {
+    background-color: #f1f1f1;
+}
