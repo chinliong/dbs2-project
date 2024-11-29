@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, session, url_for, flash
+from flask import render_template, request, redirect, session, url_for, flash, jsonify
 from . import medication_bp
 from db import get_db_connection
 from datetime import datetime
@@ -74,6 +74,26 @@ def medications():
 
     # Render the template with medications and pagination info
     return render_template('medications.html', medications=medications, page=page, total_pages=total_pages, search=search_query)
+
+@medication_bp.route('/search_medications')
+def search_medications():
+    query = request.args.get('query', '').strip()
+
+    if not query:
+        return jsonify([])  # Return empty if no query is provided
+
+    db = get_db_connection()
+    medications_collection = db['Medications']
+
+    # Perform a case-insensitive search using regex and limit to 8 results
+    medications = list(medications_collection.find({
+        "name": {"$regex": query, "$options": "i"}
+    }).limit(8))
+
+    # Only return the name field for each medication
+    results = [{"name": medication['name']} for medication in medications]
+
+    return jsonify(results)
 
 # Medication quantity updates route
 @medication_bp.route('/update_medication_quantity', methods=['POST'])
