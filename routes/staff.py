@@ -145,6 +145,32 @@ def staff_dashboard():
         flash('Please login or create a new account to access our services.')
         return redirect(url_for('auth.login'))
 
+def format_date_safely(date_value):
+    """
+    Safely formats a date value that could be in different formats:
+    - ISO datetime format (2000-10-31T00:00:00.000+00:00)
+    - Simple date string (2001-03-05)
+    - datetime object
+    
+    Returns: formatted date string in YYYY-MM-DD format
+    """
+    if not date_value:
+        return None
+        
+    if isinstance(date_value, datetime):
+        return date_value.strftime('%Y-%m-%d')
+    elif isinstance(date_value, str):
+        try:
+            # First try parsing as ISO format
+            if 'T' in date_value:
+                return datetime.fromisoformat(date_value.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+            # Then try simple date format
+            else:
+                return datetime.strptime(date_value, '%Y-%m-%d').strftime('%Y-%m-%d')
+        except ValueError:
+            return date_value
+    return None
+
 # Edit patient records route
 @staff_bp.route('/edit_patient/<string:patient_id>', methods=['GET', 'POST'])
 def edit_patient(patient_id):
@@ -169,7 +195,12 @@ def edit_patient(patient_id):
     
     # If PatientDOB exists, format it to YYYY-MM-DD
     if patient.get('PatientDOB'):
-        patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
+        # If it's already a string in YYYY-MM-DD format, keep it as is
+        if isinstance(patient['PatientDOB'], str):
+            pass
+        # If it's a datetime object, format it
+        else:
+            patient['PatientDOB'] = patient['PatientDOB'].strftime('%Y-%m-%d')
 
     if request.method == 'POST':
         # Retrieve form data
